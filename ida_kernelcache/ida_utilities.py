@@ -14,30 +14,38 @@ import ida_struct
 import ida_bytes
 import ida_funcs
 import ida_name
-import ida_auto
 
 read_ptr = idaapi.get_qword if idaapi.get_inf_structure().is_64bit() else idaapi.get_dword
 
+
 def make_log(log_level, module):
-    """Create a logging function."""
+    """
+    Create a logging function."""
+
     def log(level, *args):
         if len(args) == 0:
             return level <= log.level
         if level <= log.level:
             print(module + ': ' + args[0].format(*args[1:]))
+
     log.level = log_level
     return log
+
 
 _log = make_log(1, __name__)
 
 WORD_SIZE = 0
-"""The size of a word on the current platform."""
+"""
+The size of a word on the current platform."""
 
 BIG_ENDIAN = False
-"""Whether the current platform is big endian."""
+"""
+Whether the current platform is big endian."""
 
 LITTLE_ENDIAN = True
-"""Whether the current platform is little-endian. Always the opposite of BIG_ENDIAN."""
+"""
+Whether the current platform is little-endian. Always the opposite of BIG_ENDIAN."""
+
 
 def _initialize():
     # https://reverseengineering.stackexchange.com/questions/11396/how-to-get-the-cpu-architecture-via-idapython
@@ -55,21 +63,30 @@ def _initialize():
         BIG_ENDIAN = info.mf
     LITTLE_ENDIAN = not BIG_ENDIAN
 
+
 _initialize()
 
+
 def iterlen(iterator):
-    """Consume an iterator and return its length."""
+    """
+    Consume an iterator and return its length."""
     return sum(1 for _ in iterator)
 
+
 class AlignmentError(Exception):
-    """An exception that is thrown if an address with improper alignment is encountered."""
+    """
+    An exception that is thrown if an address with improper alignment is encountered."""
+
     def __init__(self, address):
         self.address = address
+
     def __str__(self):
         return repr(self.address)
 
+
 def is_mapped(ea, size=1, value=True):
-    """Check if the given address is mapped.
+    """
+    Check if the given address is mapped.
 
     Specify a size greater than 1 to check if an address range is mapped.
 
@@ -93,8 +110,10 @@ def is_mapped(ea, size=1, value=True):
     else:
         return idaapi.getseg(ea) and (size == 1 or idaapi.getseg(ea + size - 1))
 
+
 def get_name_ea(name, fromaddr=idc.BADADDR):
-    """Get the address of a name.
+    """
+    Get the address of a name.
 
     This function returns the linear address associated with the given name.
 
@@ -113,8 +132,10 @@ def get_name_ea(name, fromaddr=idc.BADADDR):
     """
     return idc.get_name_ea(fromaddr, name)
 
+
 def get_ea_name(ea, fromaddr=idc.BADADDR, true=False, user=False):
-    """Get the name of an address.
+    """
+    Get the name of an address.
 
     This function returns the name associated with the byte at the specified address.
 
@@ -140,9 +161,9 @@ def get_ea_name(ea, fromaddr=idc.BADADDR, true=False, user=False):
         return idc.get_name(ea, ida_name.GN_VISIBLE | idc.calc_gtn_flags(fromaddr, ea))
 
 
-
 def set_ea_name(ea, name, rename=False, auto=False):
-    """Set the name of an address.
+    """
+    Set the name of an address.
 
     Arguments:
         ea: The address to name.
@@ -164,21 +185,28 @@ def set_ea_name(ea, name, rename=False, auto=False):
         flags |= idc.SN_AUTO
     return bool(idc.set_name(ea, name, flags))
 
+
 def _insn_op_stroff_700(insn, n, sid, delta):
-    """A wrapper of idc.op_stroff for IDA 7."""
+    """
+    A wrapper of idc.op_stroff for IDA 7."""
     return idc.op_stroff(insn, n, sid, delta)
 
+
 def _insn_op_stroff_695(insn, n, sid, delta):
-    """A wrapper of idc.op_stroff for IDA 6.95."""
+    """
+    A wrapper of idc.op_stroff for IDA 6.95."""
     return idc.op_stroff(insn.ea, n, sid, delta)
+
 
 if idaapi.IDA_SDK_VERSION < 700:
     insn_op_stroff = _insn_op_stroff_695
 else:
     insn_op_stroff = _insn_op_stroff_700
 
+
 def _addresses(start, end, step, partial, aligned):
-    """A generator to iterate over the addresses in an address range."""
+    """
+    A generator to iterate over the addresses in an address range."""
     addr = start
     end_full = end - step + 1
     while addr < end_full:
@@ -190,12 +218,14 @@ def _addresses(start, end, step, partial, aligned):
         if addr < end and partial:
             yield addr
 
+
 def _mapped_addresses(addresses, step, partial, allow_unmapped):
-    """Wrap an _addresses generator with a filter that checks whether the addresses are mapped."""
+    """
+    Wrap an _addresses generator with a filter that checks whether the addresses are mapped."""
     for addr in addresses:
         start_is_mapped = is_mapped(addr)
-        end_is_mapped   = is_mapped(addr + step - 1)
-        fully_mapped    = start_is_mapped and end_is_mapped
+        end_is_mapped = is_mapped(addr + step - 1)
+        fully_mapped = start_is_mapped and end_is_mapped
         allowed_partial = partial and (start_is_mapped or end_is_mapped)
         # Yield the value if it's sufficiently mapped. Otherwise, break if we stop at an
         # unmapped address.
@@ -204,9 +234,11 @@ def _mapped_addresses(addresses, step, partial, allow_unmapped):
         elif not allow_unmapped:
             break
 
+
 def Addresses(start, end=None, step=1, length=None, partial=False, aligned=False,
-        unmapped=True, allow_unmapped=False):
-    """A generator to iterate over the addresses in an address range.
+              unmapped=True, allow_unmapped=False):
+    """
+    A generator to iterate over the addresses in an address range.
 
     Arguments:
         start: The start of the address range to iterate over.
@@ -235,7 +267,7 @@ def Addresses(start, end=None, step=1, length=None, partial=False, aligned=False
         end_addr = start + length * step
         if end is not None and end != end_addr:
             raise ValueError('Invalid arguments: start={}, end={}, step={}, length={}'
-                    .format(start, end, step, length))
+                             .format(start, end, step, length))
         end = end_addr
     if end is None:
         raise ValueError('Invalid arguments: end={}, length={}'.format(end, length))
@@ -247,8 +279,10 @@ def Addresses(start, end=None, step=1, length=None, partial=False, aligned=False
     else:
         return _mapped_addresses(addresses, step, partial, allow_unmapped)
 
+
 def _instructions_by_range(start, end):
-    """A generator to iterate over instructions in a range."""
+    """
+    A generator to iterate over instructions in a range."""
     pc = start
     while pc < end:
         insn = idautils.DecodeInstruction(pc)
@@ -264,8 +298,10 @@ def _instructions_by_range(start, end):
         yield insn
         pc = next_pc
 
+
 def _instructions_by_count(pc, count):
-    """A generator to iterate over a specified number of instructions."""
+    """
+    A generator to iterate over a specified number of instructions."""
     for i in range(count):
         insn = idautils.DecodeInstruction(pc)
         if insn is None:
@@ -273,8 +309,10 @@ def _instructions_by_count(pc, count):
         yield insn
         pc += insn.size
 
+
 def Instructions(start, end=None, count=None):
-    """A generator to iterate over instructions.
+    """
+    A generator to iterate over instructions.
 
     Instructions are decoded using IDA's DecodeInstruction(). If an address range is specified and
     the end of the address range does not fall on an instruction boundary, raises an
@@ -297,20 +335,25 @@ def Instructions(start, end=None, count=None):
     else:
         return _instructions_by_count(start, count)
 
+
 _FF_FLAG_FOR_SIZE = {
-    1:  idc.FF_BYTE,
-    2:  idc.FF_WORD,
-    4:  idc.FF_DWORD,
-    8:  idc.FF_QWORD,
+    1: idc.FF_BYTE,
+    2: idc.FF_WORD,
+    4: idc.FF_DWORD,
+    8: idc.FF_QWORD,
     16: idc.FF_OWORD,
 }
 
+
 def word_flag(wordsize=WORD_SIZE):
-    """Get the FF_xxxx flag for the given word size."""
+    """
+    Get the FF_xxxx flag for the given word size."""
     return _FF_FLAG_FOR_SIZE.get(wordsize, 0)
 
+
 def read_word(ea, wordsize=WORD_SIZE):
-    """Get the word at the given address.
+    """
+    Get the word at the given address.
 
     Words are read using Byte(), Word(), Dword(), or Qword(), as appropriate. Addresses are checked
     using is_mapped(). If the address isn't mapped, then None is returned.
@@ -327,8 +370,10 @@ def read_word(ea, wordsize=WORD_SIZE):
         return idc.get_qword(ea)
     raise ValueError('Invalid argument: wordsize={}'.format(wordsize))
 
+
 def patch_word(ea, value, wordsize=WORD_SIZE):
-    """Patch the word at the given address.
+    """
+    Patch the word at the given address.
 
     Words are patched using PatchByte(), PatchWord(), PatchDword(), or PatchQword(), as
     appropriate.
@@ -344,20 +389,27 @@ def patch_word(ea, value, wordsize=WORD_SIZE):
     else:
         raise ValueError('Invalid argument: wordsize={}'.format(wordsize))
 
+
 class objectview(object):
-    """A class to present an object-like view of a struct."""
+    """
+    A class to present an object-like view of a struct."""
+
     # https://goodcode.io/articles/python-dict-object/
     def __init__(self, fields, addr, size):
         self.__dict__ = fields
-        self.__addr   = addr
-        self.__size   = size
+        self.__addr = addr
+        self.__size = size
+
     def __int__(self):
         return self.__addr
+
     def __len__(self):
         return self.__size
 
+
 def _read_struct_member_once(ea, flags, size, member_sid, member_size, asobject):
-    """Read part of a struct member for _read_struct_member."""
+    """
+    Read part of a struct member for _read_struct_member."""
     if ida_bytes.is_byte(flags):
         return read_word(ea, 1), 1
     elif ida_bytes.is_word(flags):
@@ -379,8 +431,10 @@ def _read_struct_member_once(ea, flags, size, member_sid, member_size, asobject)
         return value, member_size
     return None, size
 
+
 def _read_struct_member(struct, sid, union, ea, offset, name, size, asobject):
-    """Read a member into a struct for read_struct."""
+    """
+    Read a member into a struct for read_struct."""
     flags = idc.get_member_flag(sid, offset)
     assert flags != -1
     # Extra information for parsing a struct.
@@ -397,7 +451,7 @@ def _read_struct_member(struct, sid, union, ea, offset, name, size, asobject):
     processed = 0
     while processed < size:
         value, read = _read_struct_member_once(member + processed, flags, size, member_sid,
-                member_ssize, asobject)
+                                               member_ssize, asobject)
         assert size % read == 0
         array.append(value)
         processed += read
@@ -407,8 +461,10 @@ def _read_struct_member(struct, sid, union, ea, offset, name, size, asobject):
         value = array
     struct[name] = value
 
+
 def read_struct(ea, struct=None, sid=None, members=None, asobject=False):
-    """Read a structure from the given address.
+    """
+    Read a structure from the given address.
 
     This function reads the structure at the given address and converts it into a dictionary or
     accessor object.
@@ -449,9 +505,12 @@ def read_struct(ea, struct=None, sid=None, members=None, asobject=False):
         struct = objectview(struct, ea, ida_struct.get_struc_size(sid))
     return struct
 
+
 def null_terminated(string):
-    """Extract the NULL-terminated C string from the given array of bytes."""
+    """
+    Extract the NULL-terminated C string from the given array of bytes."""
     return string.split(b'\0', 1)[0].decode()
+
 
 def _fix_unrecognized_function_insns(func):
     # Undefine every instruction that IDA does not recognize within the function
@@ -470,11 +529,13 @@ def _fix_unrecognized_function_insns(func):
         if idc.create_insn(unrecognized_insn) == 0:
             _log(1, "Could not convert data at {:#x} to instruction", unrecognized_insn)
             return False
-        
+
     return True
 
+
 def _convert_address_to_function(func):
-    """Convert an address that IDA has classified incorrectly into a proper function."""
+    """
+    Convert an address that IDA has classified incorrectly into a proper function."""
     # If everything goes wrong, we'll try to restore this function.
     orig = idc.first_func_chunk(func)
     if idc.find_func_end(func) == idc.BADADDR:
@@ -514,18 +575,24 @@ def _convert_address_to_function(func):
         ida_funcs.add_func(orig)
     return False
 
+
 def is_function_start(ea):
-    """Return True if the address is the start of a function."""
+    """
+    Return True if the address is the start of a function."""
     return idc.get_func_attr(ea, idc.FUNCATTR_START) == ea
 
+
 def force_function(addr):
-    """Ensure that the given address is a function type, converting it if necessary."""
+    """
+    Ensure that the given address is a function type, converting it if necessary."""
     if is_function_start(addr):
         return True
     return _convert_address_to_function(addr)
 
+
 def ReadWords(start, end, step=WORD_SIZE, wordsize=WORD_SIZE, addresses=False):
-    """A generator to iterate over the data words in the given address range.
+    """
+    A generator to iterate over the data words in the given address range.
 
     The iterator returns a stream of words or tuples for each mapped word in the address range.
     Words are read using read_word(). Iteration stops at the first unmapped word.
@@ -548,8 +615,10 @@ def ReadWords(start, end, step=WORD_SIZE, wordsize=WORD_SIZE, addresses=False):
         value = (word, addr) if addresses else word
         yield value
 
+
 def WindowWords(start, end, window_size, wordsize=WORD_SIZE):
-    """A generator to iterate over a sliding window of data words in the given address range.
+    """
+    A generator to iterate over a sliding window of data words in the given address range.
 
     The iterator returns a stream of tuples (window, ea) for each word in the address range. The
     window is a deque of the window_size words at address ea. The deque is owned by the generator
@@ -564,8 +633,10 @@ def WindowWords(start, end, window_size, wordsize=WORD_SIZE):
         addr += wordsize
         yield window, addr
 
+
 def struct_create(name, union=False):
-    """Create an IDA struct with the given name, returning the SID."""
+    """
+    Create an IDA struct with the given name, returning the SID."""
     # AddStrucEx is documented as returning -1 on failure, but in practice it seems to return
     # BADADDR.
     union = 1 if union else 0
@@ -574,8 +645,10 @@ def struct_create(name, union=False):
         return None
     return sid
 
+
 def struct_open(name, create=False, union=None):
-    """Get the SID of the IDA struct with the given name, optionally creating it."""
+    """
+    Get the SID of the IDA struct with the given name, optionally creating it."""
     sid = ida_struct.get_struc_id(name)
     if sid == idc.BADADDR:
         if not create:
@@ -587,8 +660,10 @@ def struct_open(name, create=False, union=None):
             return None
     return sid
 
+
 def struct_member_offset(sid, name):
-    """A version of IDA's GetMemberOffset() that also works with unions."""
+    """
+    A version of IDA's GetMemberOffset() that also works with unions."""
     struct = idaapi.get_struc(sid)
     if not struct:
         return None
@@ -597,15 +672,19 @@ def struct_member_offset(sid, name):
         return None
     return member.soff
 
+
 def struct_add_word(sid, name, offset, size, count=1):
-    """Add a word (integer) to a structure.
+    """
+    Add a word (integer) to a structure.
 
     If sid is a union, offset must be -1.
     """
     return idc.add_struc_member(sid, name, offset, idc.FF_DATA | word_flag(size), -1, size * count)
 
+
 def struct_add_ptr(sid, name, offset, count=1, type=None):
-    """Add a pointer to a structure.
+    """
+    Add a pointer to a structure.
 
     If sid is a union, offset must be -1.
     """
@@ -619,11 +698,12 @@ def struct_add_ptr(sid, name, offset, count=1, type=None):
         idc.SetType(mid, type)
     return ret
 
+
 def struct_add_struct(sid, name, offset, msid, count=1):
-    """Add a structure member to a structure.
+    """
+    Add a structure member to a structure.
 
     If sid is a union, offset must be -1.
     """
     size = ida_struct.get_struc_size(msid)
     return idc.add_struc_member(sid, name, offset, idc.FF_DATA | ida_bytes.FF_STRUCT, msid, size * count)
-

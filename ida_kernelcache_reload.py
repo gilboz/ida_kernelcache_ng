@@ -1,5 +1,5 @@
 #
-# ida_kernelcache.py
+# plugin_entry.py
 # Brandon Azad
 #
 # A script to import the ida_kernelcache module into IDA, reloading all the necessary internal
@@ -11,5 +11,3 @@ for mod in list(sys.modules.keys()):
     if 'ida_kernelcache' in mod:
         del sys.modules[mod]
 
-import ida_kernelcache
-import ida_kernelcache as kc

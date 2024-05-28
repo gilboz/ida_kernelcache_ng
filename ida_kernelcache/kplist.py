@@ -1,16 +1,16 @@
-#
-# ida_kernelcache/kplist.py
-# Brandon Azad
-#
-# Process kernel plists. This code is based on:
-#   - https://github.com/python/cpython/blob/3.6/Lib/plistlib.py
-#
+"""
+Author: Brandon Azad
 
+Process kernel plists. This code is based on:
+  - https://github.com/python/cpython/blob/3.6/Lib/plistlib.py
+"""
 import base64
-from xml.etree.ElementTree import TreeBuilder, XMLParser
+from xml.etree.ElementTree import XMLParser
+
 
 class _KPlistBuilder(object):
     """A companion class for XMLTreeBuilder to parse a kernel-style property list."""
+
     # IMPLEMENTATION IDEA: The XMLTreeBuilder calls us at four points: when there's a new start
     # tag, when there's a new end tag, when there's data from a tag, and when there's no more data.
     # We build objects incrementally out of these notifications. Each tag type can implement
@@ -29,27 +29,27 @@ class _KPlistBuilder(object):
 
     def __init__(self):
         self.collection_stack = []
-        self.ids              = {}
-        self.current_data     = []
-        self.current_id       = None
-        self.current_idref    = None
-        self.current_key      = None
-        self.root             = None
-        self.start_handler    = {
-                'dict':       self.start_dict,
-                'array':      self.start_array,
+        self.ids = {}
+        self.current_data = []
+        self.current_id = None
+        self.current_idref = None
+        self.current_key = None
+        self.root = None
+        self.start_handler = {
+            'dict': self.start_dict,
+            'array': self.start_array,
         }
-        self.end_handler      = {
-                'dict':       self.end_dict,
-                'key':        self.end_key,
-                'true':       self.end_true,
-                'false':      self.end_false,
-                'integer':    self.end_integer,
-                'string':     self.end_string,
-                'data':       self.end_data,
+        self.end_handler = {
+            'dict': self.end_dict,
+            'key': self.end_key,
+            'true': self.end_true,
+            'false': self.end_false,
+            'integer': self.end_integer,
+            'string': self.end_string,
+            'data': self.end_data,
         }
-        self.attributes       = {
-                'integer':    ('size',),
+        self.attributes = {
+            'integer': ('size',),
         }
         self.tags = set(self.start_handler.keys()).union(list(self.end_handler.keys()))
 
@@ -72,7 +72,7 @@ class _KPlistBuilder(object):
             original_tag, _ = self.ids[self.current_idref]
             if tag != original_tag:
                 raise ValueError('tag "{}" has IDREF to element with different tag "{}"'
-                        .format(tag, original_tag))
+                                 .format(tag, original_tag))
             if len(attr) > 1:
                 raise ValueError('tag has IDREF and another attribute')
             return
@@ -200,14 +200,14 @@ class _KPlistBuilder(object):
     def end_data(self):
         return base64.b64decode(self.get_data())
 
+
 def kplist_parse(plist):
     """Parse a kernel-style property list."""
     try:
         builder = _KPlistBuilder()
-        parser  = XMLParser(target=builder)
+        parser = XMLParser(target=builder)
         parser.feed(plist)
         return parser.close()
     except Exception as e:
         print(e)
         return None
-

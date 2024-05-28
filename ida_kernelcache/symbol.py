@@ -15,18 +15,20 @@ import re
 import idc
 import idaapi
 
+
 def method_name(symbol):
     """Get the name of the C++ method from its symbol.
 
     If the symbol demangles to 'Class::method(args)', this function returns 'method'.
     """
     try:
-        demangled  = idc.demangle_name(symbol, idc.get_inf_attr(idc.INF_SHORT_DEMNAMES))
-        func       = demangled.split('::', 1)[1]
-        base       = func.split('(', 1)[0]
+        demangled = idc.demangle_name(symbol, idc.get_inf_attr(idc.INF_SHORT_DEMNAMES))
+        func = demangled.split('::', 1)[1]
+        base = func.split('(', 1)[0]
         return base or None
     except:
         return None
+
 
 def method_arguments_string(symbol):
     """Get the arguments string of the C++ method from its symbol.
@@ -34,13 +36,14 @@ def method_arguments_string(symbol):
     If the symbol demangles to 'Class::method(arg1, arg2)', this function returns 'arg1, arg2'.
     """
     try:
-        demangled  = idc.demangle_name(symbol, idc.get_inf_attr(idc.INF_LONG_DEMNAMES))
-        func       = demangled.split('::', 1)[1]
-        args       = func.split('(', 1)[1]
-        args       = args.rsplit(')', 1)[0].strip()
+        demangled = idc.demangle_name(symbol, idc.get_inf_attr(idc.INF_LONG_DEMNAMES))
+        func = demangled.split('::', 1)[1]
+        args = func.split('(', 1)[1]
+        args = args.rsplit(')', 1)[0].strip()
         return args
     except:
         return None
+
 
 def method_arguments(symbol):
     """Get the arguments list of the C++ method from its symbol.
@@ -72,6 +75,7 @@ def method_arguments(symbol):
     except:
         return None
 
+
 def method_argument_pointer_types(symbol):
     """Get the base types of pointer types used in the arguments to a C++ method."""
     args = method_arguments_string(symbol)
@@ -88,8 +92,9 @@ def method_argument_pointer_types(symbol):
         if re.match(r"[^ ]+ [*][* ]*", argtype):
             ptrtypes.add(argtype.split(' ', 1)[0])
     ptrtypes.difference_update(['void', 'bool', 'char', 'short', 'int', 'long', 'float', 'double',
-        'longlong', '__int64'])
+                                'longlong', '__int64'])
     return ptrtypes
+
 
 def method_argument_types(symbol, sign=True):
     """Get the base types used in the arguments to a C++ method."""
@@ -109,6 +114,7 @@ def method_argument_types(symbol, sign=True):
     except:
         return None
 
+
 def convert_function_type_to_function_pointer_type(typestr):
     """Convert a function type string into a function pointer type string.
 
@@ -121,8 +127,11 @@ def convert_function_type_to_function_pointer_type(typestr):
     except:
         return None
 
+
 def make_ident(name):
-    """Convert a name into a valid identifier, substituting any invalid characters."""
+    """
+    Convert a name into a valid identifier, substituting any invalid characters.
+    """
     ident = ''
     for c in name:
         if idaapi.is_ident_cp(ord(c)):
@@ -130,6 +139,7 @@ def make_ident(name):
         else:
             ident += '_'
     return ident
+
 
 def _mangle_name(scopes):
     def _is_templated_scope(scope: str):
@@ -173,6 +183,7 @@ def _mangle_name(scopes):
         symbol += 'E'
     return symbol
 
+
 def vtable_symbol_for_class(classname):
     """Get the mangled symbol name for the vtable for the given class name.
 
@@ -187,6 +198,7 @@ def vtable_symbol_for_class(classname):
         return None
     return '__ZTV' + name
 
+
 def vtable_symbol_get_class(symbol):
     """Get the class name for a vtable symbol."""
     try:
@@ -196,6 +208,7 @@ def vtable_symbol_get_class(symbol):
         return post
     except:
         return None
+
 
 def global_name(name):
     """Get the mangled symbol name for the global name.
@@ -218,3 +231,32 @@ def clean_templated_name(templated_name):
     # also: iOS17b1 OSValueObject<OSKextRequestResourceCallback>::fields field on the struct: OSValueObject<OSKextRequestResourceCallback>
     clean_name = templated_name.replace("<", "_").replace(">", "_").replace("*", "P")
     return clean_name
+
+
+def metaclass_name_for_class(classname):
+    """Return the name of the C++ metaclass for the given class."""
+    if '::' in classname:
+        return None
+    return classname + '::MetaClass'
+
+
+def metaclass_instance_name_for_class(classname):
+    """Return the name of the C++ metaclass instance for the given class."""
+    if '::' in classname:
+        return None
+    return classname + '::gMetaClass'
+
+
+def metaclass_symbol_for_class(classname):
+    """Get the symbol name for the OSMetaClass instance for the given class name.
+
+    Arguments:
+        classname: The name of the C++ class.
+
+    Returns:
+        The symbol name, or None if the classname is invalid.
+    """
+    metaclass_instance = metaclass_instance_name_for_class(classname)
+    if not metaclass_instance:
+        return None
+    return global_name(metaclass_instance)

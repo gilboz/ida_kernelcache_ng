@@ -1,9 +1,9 @@
-#
-# ida_kernelcache.py
-# Brandon Azad
-#
-# A script to import the ida_kernelcache module into IDA.
-#
+"""
+plugin_entry.py
+A script to load ida_kernelcache module and create a KernelCache instance
+To start analyzing call kc.process()
 
+@Author: Brandon Azad
+"""
 import ida_kernelcache
-import ida_kernelcache as kc
+kc = ida_kernelcache.KernelCache()
