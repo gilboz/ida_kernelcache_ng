@@ -14,6 +14,8 @@ import re
 
 import idc
 import idaapi
+import ida_kernelcache.consts as consts
+from ida_kernelcache.exceptions import PhaseException
 
 
 def method_name(symbol):
@@ -210,21 +212,6 @@ def vtable_symbol_get_class(symbol):
         return None
 
 
-def global_name(name):
-    """Get the mangled symbol name for the global name.
-
-    Arguments:
-        name: The name of the global object.
-
-    Returns:
-        The symbol name, or None if the name is invalid.
-    """
-    mangled = _mangle_name(name.split('::'))
-    if not mangled:
-        return None
-    return '__Z' + mangled
-
-
 def clean_templated_name(templated_name: str) -> str:
     # TODO: below is a hack fix to handle names of templates. We need a better way to handle them.
     # example "OSValueObject<void*>" -> "OSValueObject_voidP_"
@@ -235,28 +222,19 @@ def clean_templated_name(templated_name: str) -> str:
 
 def metaclass_name_for_class(classname):
     """Return the name of the C++ metaclass for the given class."""
+    assert '::' not in classname
     if '::' in classname:
         return None
     return classname + '::MetaClass'
+{}
 
-
-def metaclass_instance_name_for_class(classname):
-    """Return the name of the C++ metaclass instance for the given class."""
-    if '::' in classname:
-        return None
-    return classname + '::gMetaClass'
-
-
-def metaclass_symbol_for_class(classname):
-    """Get the symbol name for the OSMetaClass instance for the given class name.
-
-    Arguments:
-        classname: The name of the C++ class.
-
-    Returns:
-        The symbol name, or None if the classname is invalid.
+def metaclass_symbol_for_class(classname: str) -> str:
     """
-    metaclass_instance = metaclass_instance_name_for_class(classname)
-    if not metaclass_instance:
-        return None
-    return global_name(metaclass_instance)
+    Get the symbol name for the OSMetaClass instance for the given class name.
+    """
+    assert consts.CXX_SCOPE not in classname, f'{classname} contains {consts.CXX_SCOPE}!'
+
+    mangled = _mangle_name((classname, consts.GLOBAL_METACLASS_INSTANCE_NAME))
+    if mangled is None:
+        raise PhaseException(f'Failed to mangle classname!')
+    return f'__Z{mangled}'

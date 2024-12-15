@@ -13,7 +13,7 @@ import ida_xref
 import ida_hexrays
 
 from .base_phase import BasePhase
-from ida_kernelcache import class_info, symbol
+from ida_kernelcache import class_info, symbols
 from ida_kernelcache.exceptions import PhaseException
 from ida_kernelcache.utils import OneToOneMapFactory
 
@@ -213,7 +213,7 @@ class CollectClasses(BasePhase):
             return False
 
         classname_str = idc.get_strlit_contents(classname_ea).decode()
-        classname_str_clean = symbol.clean_templated_name(classname_str)
+        classname_str_clean = symbols.clean_templated_name(classname_str)
         metaclass_arg = decompiler.traverse_casts_or_ref_branch(visitor.args[0])
         match metaclass_arg.op:
             case ida_hexrays.cot_var:

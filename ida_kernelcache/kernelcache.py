@@ -10,8 +10,7 @@ from ida_kernelcache import (
     kplist, class_info,
 )
 from ida_kernelcache.exceptions import PhaseException
-from ida_kernelcache.phases.base_phase import BasePhase
-from ida_kernelcache.phases.collect_classes import CollectClasses
+from ida_kernelcache.phases import ALL_PHASES
 from ida_kernelcache.ida_helpers.abstractions import Segment
 
 logging.basicConfig(format='%(levelname)-10s %(name)s: %(message)s', level=logging.INFO)
@@ -29,10 +28,6 @@ class KernelCache(object):
     well enough, and it also parses inner Mach-O header of each Kext.
     The current kernelcache I'm working on has 311 kexts and after loading it into IDA we get a total of *4301* segments
     """
-
-    ALL_PHASES = [
-        CollectClasses
-    ]
 
     def __init__(self):
         super().__init__()
@@ -111,57 +106,9 @@ class KernelCache(object):
         filetype = idaapi.get_file_type_name()
         return ('Mach-O' in filetype or 'kernelcache' in filetype) and 'ARM64' in filetype
 
-    def all_phases(self) -> list[BasePhase]:
-        phases = []
-        # if self.format == KCFormat.MERGED_12 and idaapi.IDA_SDK_VERSION < 720:
-        #     phases.append(TaggedPointers)  # Not needed anymore since IDA 7.2 https://hex-rays.com/products/ida/news/7_2/
-        # RenamSegments,  # Not needed after IDA 7.5SP2? https://hex-rays.com/products/ida/news/7_5sp2/
-        phases += [
-            CollectClasses,
-            # CollectVtables,
-            # AddVtableSymbols,
-            # AddMetaClassSymbols
-        ]
-
-        return phases
-        # # TODO: Not relevant in iOS 12 and above..
-        # print('Initializing data offsets')
-        # offset.initialize_data_offsets()
-        #
-        # # TODO: depends on collect_vtables.py
-        # print('Initializing vtables')
-        # vtable.initialize_vtables()
-        #
-        # # TODO: depends on collect_vtables.py
-        # print('Initializing vtable symbols')
-        # vtable.initialize_vtable_symbols()
-        #
-        # # TODO: depends on collect_metaclass.py
-        # print('Initializing metaclass symbols')
-        # metaclass.initialize_metaclass_symbols()
-        #
-        # # if self.format == KCFormat.NORMAL_11:
-        # #     print('Initializing offset symbols')
-        # #     offset.initialize_offset_symbols()
-        # #
-        # #     print('Initializing stub symbols')
-        # #     stub.
-        # #     initialize_stub_symbols()
-        #
-        # # TODO: depends on collect_vtables.py
-        # print('Initializing vtable method symbols')
-        # vtable.initialize_vtable_method_symbols()
-        #
-        # # TODO: depends on collect_vtable.py and collect_classes.pyki
-        # print('Initializing vtable structs')
-        # class_struct.initialize_vtable_structs()
-        #
-        # # TODO: depends on collect_vtable.py and collect_classes.py
-        # print('Initializing class structs')
-        # class_struct.initialize_class_structs()
-
-    def process(self, phases: list = None):
+    def process(self, phases: list | None = None):
         """
+        TODO: edit this docstring
         Process the kernelcache in IDA for the first time.
 
          This function performs all the standard processing available in this module:
@@ -178,7 +125,7 @@ class KernelCache(object):
 
         log.info('processing kernelcache..')
         if not phases:
-            phases = self.ALL_PHASES
+            phases = ALL_PHASES
 
         # Run all phases
         for phase_cls in phases:
@@ -194,5 +141,6 @@ class KernelCache(object):
             else:
                 log.info(f'***** Finished phase: {phase_cls.__name__} *****')
 
-            # auto-analyze after every phase
+            # Wait for auto analysis to complete after every phase.
+            # Honestly I'm not sure if this is needed but the auto analyzer is IDLE it will return immediately
             ida_auto.auto_wait()

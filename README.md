@@ -17,3 +17,16 @@ ida_kernelcache is released under the MIT license.
 Much of the functionality in ida_kernelcache is borrowed from [memctl], which is also released
 under the MIT license. Other sources are noted in the comments in the corresponding files.
 
+## TODO:
+- [ ] CollectClass phase resolve TODOs in the module
+- [ ] CollectVtables phase resolve TODOs in the module
+- [ ] Implement AddClassInfoSymbols phase
+  - [ ] Change the global instances type to OSMetaClass * type (requires to create this type a-prior)
+- [ ] Implement create C++ types (conforming to IDA 7.2 new C++ types)
+- [ ] Improve Data flow analysis
+  - [ ] No more gaps in structures
+  - [ ] Scrape type information from kalloc_type/kalloc_type_var signatures?
+- [ ] Add an ida_undo point and restore IDB in case of an exception
+- [ ] Add a script to analyze the kernelcache using the new idalib (headless mode)
+- [ ] Improve plugin GUI
+- [ ] Kernel fixups 
