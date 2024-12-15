@@ -12,8 +12,7 @@ import idautils
 import idaapi
 import ida_bytes
 
-from . import ida_utilities as idau
-from . import internal
+from ida_kernelcache import ida_utilities as idau, internal
 
 _log = idau.make_log(1, __name__)
 
@@ -22,6 +21,7 @@ kernelcache_stub_suffix = '___stub_'
 
 _stub_regex = re.compile(r"^(\S+)" + kernelcache_stub_suffix + r"\d+$")
 """A regular expression to match and extract the target name from a stub symbol."""
+
 
 def stub_name_target(stub_name):
     """Get the target to which a stub name refers.
@@ -33,9 +33,11 @@ def stub_name_target(stub_name):
         return None
     return match.group(1)
 
+
 def symbol_references_stub(symbol_name):
     """Check if the symbol name references a stub."""
     return kernelcache_stub_suffix in symbol_name
+
 
 def _process_stub_template_1(stub):
     """A template to match the following stub pattern:
@@ -56,9 +58,11 @@ def _process_stub_template_1(stub):
         if target and idau.is_mapped(target):
             return target
 
+
 _stub_processors = (
     _process_stub_template_1,
 )
+
 
 def stub_target(stub_func):
     """Find the target function called by a stub.
@@ -73,6 +77,7 @@ def stub_target(stub_func):
                 return target
         except:
             pass
+
 
 def _symbolicate_stub(stub, target, next_stub):
     """Set a symbol for a stub function."""
@@ -90,7 +95,7 @@ def _symbolicate_stub(stub, target, next_stub):
     # semantics in the original code, so it's not appropriate for us to cover that up with a stub.
     if symbol_references_stub(name):
         _log(2, 'Stub {:#x} has target {:#x} (name {}) that references another stub', stub, target,
-                name)
+             name)
         return False
     symbol = next_stub(name)
     if symbol is None:
@@ -100,6 +105,7 @@ def _symbolicate_stub(stub, target, next_stub):
         _log(2, 'Could not set name {} for stub at {:#x}', symbol, stub)
         return False
     return True
+
 
 def _process_possible_stub(stub, make_thunk, next_stub):
     """Try to process a stub function."""
@@ -134,6 +140,7 @@ def _process_possible_stub(stub, make_thunk, next_stub):
         return False
     return True
 
+
 def _process_stubs_section(segstart, make_thunk, next_stub):
     """Process all the functions in a __stubs section."""
     segend = idc.get_segm_end(segstart)
@@ -142,6 +149,7 @@ def _process_stubs_section(segstart, make_thunk, next_stub):
     for ea in idau.Addresses(segstart, segend, step=1):
         if idc.isRef(ida_bytes.get_full_flags(ea)) and not stub_name_target(idau.get_ea_name(ea)):
             _process_possible_stub(ea, make_thunk, next_stub)
+
 
 def initialize_stub_symbols(make_thunk=True):
     """Populate IDA with information about the stubs in an iOS kernelcache.
@@ -161,4 +169,3 @@ def initialize_stub_symbols(make_thunk=True):
             continue
         _log(3, 'Processing segment {}', segname)
         _process_stubs_section(ea, make_thunk, next_stub)
-
