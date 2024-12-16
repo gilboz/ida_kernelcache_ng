@@ -33,7 +33,7 @@ class SetClassInfoSymbols(BasePhase):
             self._add_metaclass_instance_symbol(classinfo)
 
             # TODO: is this really how we want to handle classes without vtable information? Maybe we should use their superclass's vtable
-            if classinfo.vtable_ea != idc.BADADDR:
+            if classinfo.vtable_info:
                 self._add_vtable_symbol(classinfo)
             else:
                 self.log.debug(f'Skipping vtable symbol for {classname} because we dont have the corresponding vtable ea!')
@@ -52,5 +52,5 @@ class SetClassInfoSymbols(BasePhase):
         Set a symbol for the virtual method table at the specified address, renaming it if it already exists!
         """
         vtable_symbol = symbols.vtable_symbol_for_class(classinfo.class_name)
-        if not names.set_ea_name(classinfo.vtable_ea, vtable_symbol, rename=True):
-            self.log.warning(f'Failed to set name at {classinfo.vtable_ea:#x}! wanted {vtable_symbol}')
+        if not names.set_ea_name(classinfo.vtable_info.vtable_ea, vtable_symbol, rename=True):
+            self.log.warning(f'Failed to set name at {classinfo.vtable_info.vtable_ea:#x}! wanted {vtable_symbol}')
