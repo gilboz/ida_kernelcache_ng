@@ -1,4 +1,4 @@
-#
+]#
 # ida_kernelcache/build_struct.py
 # Brandon Azad
 #

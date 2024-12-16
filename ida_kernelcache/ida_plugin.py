@@ -20,7 +20,7 @@ class IDAKernelCachePlugin(idaapi.plugin_t):
     # See: https://hex-rays.com/blog/augmenting-ida-ui-with-your-own-actions/ and the Pacxplorer plugin by Lipner..
     def init(self):
 
-        if not KernelCache.is_input_file_kernelcache():
+        if not KernelCache.is_supported():
             return idaapi.PLUGIN_SKIP
 
         print('[ida_kernelcache] init callback has been called..')
@@ -29,8 +29,7 @@ class IDAKernelCachePlugin(idaapi.plugin_t):
     def run(self, arg):
         # TODO: do we want to store this variable as an attribute of the plugin?
         kc = KernelCache()
-        phases = kc.all_phases()
-        kc.process(phases)
+        kc.process()
 
     def term(self):
         # TODO: cache data in the IDB for persistency?

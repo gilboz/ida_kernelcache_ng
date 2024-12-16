@@ -4,7 +4,7 @@ import idaapi
 import idautils
 import idc
 
-from ida_kernelcache import consts
+from ida_kernelcache import consts, rtti_info
 from ida_kernelcache.exceptions import PhaseException
 from ida_kernelcache.ida_helpers import decompiler, generators
 import ida_kernelcache.ida_helpers as ida_helpers
@@ -127,9 +127,9 @@ class CollectVtables(BasePhase):
 
     def _collect_vtables_new(self):
         for metaclass_ea, getmetaclass_ea in self._metaclass_ea_to_getmetaclass_ea.items():
-            classinfo = self._kc.class_info_map[metaclass_ea]
+            class_info = self._kc.class_info_map[metaclass_ea]
 
-            if classinfo.class_name == 'OSMetaClass':
+            if class_info.class_name == 'OSMetaClass':
                 # TODO: OSMetaClass::getMetaClass is referenced in all of the other MetaClasses
                 self.log.warning('Currently not collecting *::MetaClass vtables (needs to be implemented)')
                 continue
@@ -159,15 +159,15 @@ class CollectVtables(BasePhase):
                     num_vtable_methods += 1
 
                 vtable_end_ea = vtable_ea + num_vtable_methods * consts.WORD_SIZE + consts.VTABLE_FIRST_METHOD_OFFSET
-                self.log.debug(f'Found vtable of {classinfo.class_name} {vtable_ea:#x}-{vtable_end_ea:#x} num methods:{num_vtable_methods}')
+                self.log.debug(f'Found vtable of {class_info.class_name} {vtable_ea:#x}-{vtable_end_ea:#x} num methods:{num_vtable_methods}')
 
-                # TODO: do we need the One-To-One map ..?
-                classinfo.vtable_ea = vtable_ea
-                classinfo.vtable_end_ea = vtable_end_ea
+                vtable_info = rtti_info.VtableInfo(vtable_ea, vtable_end_ea)
+                class_info.vtable_info = vtable_info
+                vtable_info.class_info = class_info
 
 
             elif len(candidates) > 1:
                 candidates_str = ', '.join(hex(x) for x in candidates)
-                self.log.warning(f'{classinfo.class_name} {getmetaclass_ea:#x} has multiple vtable candidates {candidates_str}')
+                self.log.warning(f'{class_info.class_name} {getmetaclass_ea:#x} has multiple vtable candidates {candidates_str}')
             else:
-                self.log.error(f'No potential vtable xref to {classinfo.class_name}::getMetaClass found!')
+                self.log.error(f'No potential vtable xref to {class_info.class_name}::getMetaClass found!')

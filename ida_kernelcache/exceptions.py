@@ -14,6 +14,14 @@ class AlignmentError(Exception):
         return repr(self.address)
 
 
+class ClassHasVtableError(PhaseException):
+    pass
+
+
+class VtableHasClassError(PhaseException):
+    pass
+
+
 class CreateSymbolFailed(PhaseException):
     pass
 

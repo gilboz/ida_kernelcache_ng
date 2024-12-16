@@ -1,3 +1,5 @@
+MIN_IDA_SDK_VERSION = 900
+
 # The size of a word on the current platform.
 WORD_SIZE = 8
 
@@ -12,3 +14,14 @@ OSMETACLASS_CTOR_SYMBOL = '__ZN11OSMetaClassC2EPKcPKS_j'
 GLOBAL_METACLASS_INSTANCE_NAME = 'gMetaclass'
 # Scope resolution operator
 CXX_SCOPE = '::'
+
+
+
+# Related to CreateTypes
+FUNC_NAME_TEMPlATE = 'vmethod_{index}'
+VIRTUAL_FUNC_TEMPLATE = 'virtual __int64 {func_name}({func_sig});'
+CLASS_DECL_TEMPLATE = '''\
+class {class_name}{superclass_name} {{
+{virtual_funcs}
+{data_fields}
+}};'''

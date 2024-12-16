@@ -8,7 +8,7 @@ from .base_phase import BasePhase
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ida_kernelcache.class_info import ClassInfo
+    from ida_kernelcache.rtti_info import ClassInfo
 
 
 class SetClassInfoSymbols(BasePhase):

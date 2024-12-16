@@ -1,18 +1,15 @@
 """
+ida_kernelcache/rtti_info.py
+Author: Brandon Azad, gilboz
 
-ida_kernelcache/class_info.py
-Author: Brandon Azad
+This module defines the ClassInfo, VtableInfo and ClassInfoMap classes.
+These classes are responsible for sotring information about a C++ RTTI information in the kernelcache.
 
-This module defines the ClassInfo class, which stores information about a C++ class in the
-kernelcache. It also provides the function collect_class_info() to scan the kernelcache for
-information about C++ classes and populate global variables with the result.
+The ClassInfoMap is meant to hold all of this information in an easy to use and fast data structure.
+It uses both metaclass_ea and classname as indexes to the ClassInfo instances that are created in the CollectClasses phase
 """
-import idc
-
-from ida_kernelcache import (
-    ida_utilities as idau,
-    consts
-)
+from ida_kernelcache import consts
+from ida_kernelcache.exceptions import ClassHasVtableError, VtableHasClassError
 
 
 class ClassInfo(object):
@@ -20,46 +17,27 @@ class ClassInfo(object):
     Python class to store C++ class information from KernelCache.
     """
 
-    def __init__(self, class_name: str, metaclass: int, class_size: int, superclass: 'ClassInfo' = None, vtable_ea: int = idc.BADADDR, vtable_end_ea: int = idc.BADADDR):
+    def __init__(self, class_name: str, metaclass: int, class_size: int, superclass: 'ClassInfo' = None):
         self.class_name = class_name
         self.metaclass_ea = metaclass
         self.class_size = class_size
 
-        # There are several classes where vtable information is
-        self.vtable_ea = vtable_ea
-        self.vtable_end_ea = vtable_end_ea
-
-        self.superclass: 'ClassInfo | None' = None
+        self.superclass: 'ClassInfo | None' = superclass
+        self._vtable_info: 'VtableInfo | None' = None
         self.subclasses = set()
 
     def __repr__(self):
-        def hex(x):
-            if x is None:
-                return repr(None)
-            return f'{x:#x}'
-
-        return 'ClassInfo({!r}, {}, {}, {}, {}, {!r}, {})'.format(
-            self.class_name, hex(self.metaclass_ea), hex(self.vtable_ea),
-            self.vtable_length, self.class_size)
+        return f'<ClassInfo {self.class_name}, size:{self.class_size}, metaclass:{self.metaclass_ea:#x}>'
 
     @property
-    def vtable_length(self) -> int:
-        """
-        This property is the number of bytes for the whole vtable
-        """
-        return self.vtable_end_ea - self.vtable_ea
+    def vtable_info(self):
+        return self._vtable_info
 
-    @property
-    def vtable_methods_start(self) -> int:
-        """
-        The EA of the first actual method in the vtable
-        """
-        return self.vtable_ea + consts.VTABLE_FIRST_METHOD_OFFSET
-
-    @property
-    def vtable_num_methods(self) -> int:
-        assert self.vtable_length % consts.WORD_SIZE == 0, f'Invalid vtable length {self.vtable_length} for {self.class_name}!'
-        return self.vtable_length // consts.WORD_SIZE
+    @vtable_info.setter
+    def vtable_info(self, vtable_info: 'VtableInfo'):
+        if self._vtable_info:
+            raise ClassHasVtableError(f'{self.class_name} is already associated with vtable at {self._vtable_info.vtable_ea:#x}')
+        self._vtable_info = vtable_info
 
     def ancestors(self, inclusive: bool = False) -> ['ClassInfo', None, None]:
         """A generator over all direct or indirect superclasses of this class.
@@ -90,6 +68,49 @@ class ClassInfo(object):
         for subclass in self.subclasses:
             for descendant in subclass.descendants(inclusive=True):
                 yield descendant
+
+
+class VtableInfo:
+    """
+    Current design only allows a one-to-one relationship between a ClassInfo instance and a VtableInfo instance
+    """
+
+    def __init__(self, vtable_ea: int, vtable_end_ea: int, class_info: ClassInfo | None = None):
+        self.vtable_ea = vtable_ea
+        self.vtable_end_ea = vtable_end_ea
+        self._class_info = class_info
+
+    def __len__(self):
+        return self.vtable_length
+
+    @property
+    def class_info(self):
+        return self._class_info
+
+    @class_info.setter
+    def class_info(self, class_info: 'ClassInfo'):
+        if self._class_info:
+            raise VtableHasClassError(f'vtable {self.vtable_ea:#x} is already associated with {self._class_info.class_name}')
+        self._class_info = class_info
+
+    @property
+    def vtable_length(self) -> int:
+        """
+        This property is the number of bytes for the whole vtable
+        """
+        return self.vtable_end_ea - self.vtable_ea
+
+    @property
+    def vtable_methods_start(self) -> int:
+        """
+        The EA of the first actual method in the vtable
+        """
+        return self.vtable_ea + consts.VTABLE_FIRST_METHOD_OFFSET
+
+    @property
+    def vtable_num_methods(self) -> int:
+        assert self.vtable_length % consts.WORD_SIZE == 0, f'Invalid vtable length {self.vtable_length} for {self.class_name}!'
+        return self.vtable_length // consts.WORD_SIZE
 
 
 class ClassInfoMap:
@@ -131,7 +152,7 @@ class ClassInfoMap:
         self.metaclass_ea_to_class_info.__setitem__(key[0], value)
         self.classname_to_class_info.__setitem__(key[1], value)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key) -> ClassInfo:
         d = self._get_dict_from_key(key)
         return d.__getitem__(key)
 

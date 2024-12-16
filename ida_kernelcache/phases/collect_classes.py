@@ -5,7 +5,6 @@ Useful references:
 - https://developer.apple.com/library/archive/documentation/DeviceDrivers/Conceptual/WritingDeviceDriver/CPluPlusRuntime/CPlusPlusRuntime.html
 """
 import collections
-import logging
 import re
 
 import idc
@@ -14,7 +13,7 @@ import ida_xref
 import ida_hexrays
 
 from .base_phase import BasePhase
-from ida_kernelcache import class_info, symbols
+from ida_kernelcache import rtti_info, symbols
 from ida_kernelcache.exceptions import PhaseException
 from ida_kernelcache.utils import OneToOneMapFactory
 
@@ -29,17 +28,15 @@ class CollectClasses(BasePhase):
     Collect information about C++ classes defined in a kernelcache. Arm64 only.
 
     This function searches through an iOS kernelcache for information about the C++ classes defined
-    in it. It populates the global class_info dictionary, which maps the C++ class names to a
-    ClassInfo object containing metainformation about the class.
+    in it. It populates the KernelCache's class_info_map, which maps the C++ class names and metaclass eas to a
+    ClassInfo object containing meta-information about the class.
 
-    To force re-evaluation of the class_info dictionary, call class_info.clear() and then re-run
-    this function.
+    Every run of this phase will clear the class_info_map and re-evaluate it.
 
+    TODO: I dropped support for looking for virtual tables that are not used by any class in the kernelcache. How many are there? Are they useful?
     This function also collects the set of all virtual method tables identified in the kernelcache,
     even if the corresponding class could not be identified. A mapping from each virtual method
     table to its length is stored in the global vtables variable.
-
-    Only Arm64 is supported at this time.
 
     TODO: An example to a nested class that is interesting and we are missing ..?
     Only top-level classes are processed. Information about nested classes is not collected.
@@ -265,13 +262,14 @@ class CollectClasses(BasePhase):
 
         # Start one iteration by creating every ClassInfo instance for every discovered class
         for metaclass_ea, class_name in one_to_one_map.items():
-            classinfo = class_info.ClassInfo(class_name,
-                                             metaclass_ea,
-                                             self._metaclass_to_class_size[metaclass_ea])
+            class_info = rtti_info.ClassInfo(class_name,
+                                            metaclass_ea,
+                                            self._metaclass_to_class_size[metaclass_ea])
 
-            self._kc.class_info_map.add_classinfo(classinfo)
+            self._kc.class_info_map.add_classinfo(class_info)
+        self.log.info(f'Added {len(self._kc.class_info_map)} to the ClassInfo list')
 
-        for metaclass_ea, class_name, classinfo in self._kc.class_info_map.items():
+        for metaclass_ea, class_name, class_info in self._kc.class_info_map.items():
 
             # The root classes are those that do not have any superclass
             if metaclass_ea not in self._metaclass_to_super_metaclass:
@@ -286,6 +284,6 @@ class CollectClasses(BasePhase):
             superclass_info = self._kc.class_info_map[super_metaclass_ea]
 
             # Create parent-child link
-            self.log.debug(f'{superclass_info.class_name} ===> {classinfo.class_name}')
-            classinfo.superclass = superclass_info
-            superclass_info.subclasses.add(classinfo)
+            self.log.debug(f'{superclass_info.class_name} ===> {class_info.class_name}')
+            class_info.superclass = superclass_info
+            superclass_info.subclasses.add(class_info)

@@ -7,7 +7,7 @@ import idaapi
 import idc
 import logging
 from ida_kernelcache import (
-    kplist, class_info,
+    kplist, rtti_info, consts,
 )
 from ida_kernelcache.exceptions import PhaseException
 from ida_kernelcache.phases import ALL_PHASES
@@ -34,8 +34,9 @@ class KernelCache(object):
         self._base = None
         self._prelink_info = None
 
-        self.class_info_map = class_info.ClassInfoMap()
         # TODO: make this persistent?
+        self.class_info_map = rtti_info.ClassInfoMap()
+
         self.segments_list: list[Segment] = []
 
         for i in range(ida_segment.get_segm_qty()):
@@ -98,13 +99,22 @@ class KernelCache(object):
             return []
         return [k['CFBundleIdentifier'] for k in self.prelink_info['_PrelinkInfoDictionary']]
 
-    @classmethod
-    def is_input_file_kernelcache(cls) -> bool:
+    @staticmethod
+    def is_supported() -> bool:
         """
         Checks that the filetype is compatible before trying to process it.
+
         """
+
+        if idaapi.IDA_SDK_VERSION < consts.MIN_IDA_SDK_VERSION:
+            log.error('Unsupported IDA version. The minimum requirement is to run IDA 9.0!')
+            return False
+
         filetype = idaapi.get_file_type_name()
-        return ('Mach-O' in filetype or 'kernelcache' in filetype) and 'ARM64' in filetype
+        if ('Mach-O' not in filetype and 'kernelcache' not in filetype) or 'ARM64' not in filetype:
+            log.error(f'Unsupported file type! This script supports ARM64 kernelcaches only!"')
+            return False
+        return True
 
     def process(self, phases: list | None = None):
         """
@@ -119,8 +129,7 @@ class KernelCache(object):
              * Symbolicates methods in vtables based on the method names in superclasses.
              * Creates IDA structs representing the C++ classes in the kernel.
          """
-        if not self.is_input_file_kernelcache():
-            log.error(f'Unsupported file type! This script supports ARM64 kernelcaches only!"')
+        if not self.is_supported():
             return
 
         log.info('processing kernelcache..')

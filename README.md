@@ -38,3 +38,6 @@ under the MIT license. Other sources are noted in the comments in the correspond
 - [ ] Symbolicate with os_log strings
 - [ ] CollectClass phase resolve TODOs in the module
 - [ ] CollectVtables phase resolve TODOs in the module
+- [ ] Get rid of old code
+  - [ ] utils.py OneToOneMap not really needed anymore (add checks are raise PhaseException upon duplicates!)
+  - 
