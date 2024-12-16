@@ -5,6 +5,7 @@ Useful references:
 - https://developer.apple.com/library/archive/documentation/DeviceDrivers/Conceptual/WritingDeviceDriver/CPluPlusRuntime/CPlusPlusRuntime.html
 """
 import collections
+import logging
 import re
 
 import idc
@@ -43,7 +44,6 @@ class CollectClasses(BasePhase):
     TODO: An example to a nested class that is interesting and we are missing ..?
     Only top-level classes are processed. Information about nested classes is not collected.
     """
-
     NUM_EXPECTED_ARGS = 4
 
     def __init__(self, kc):
@@ -64,34 +64,14 @@ class CollectClasses(BasePhase):
         self._num_succeeded = 0
         self._num_duplicates = 0
         self._num_unique_unresolved = 0
+        self._num_dropped_in_one_to_one_map = 0
 
     def run(self):
         # Clear out old class information
         self._kc.class_info_map.clear()
         self._find_osmetaclass_constructor()
         self._collect_metaclasses()
-
-        # Filter out any class name (and its associated metaclasses) that has multiple metaclasses.
-        # This can happen when multiple kexts define a class but only one gets loaded.
-        def bad_classname(classname, metaclasses):
-            self.log.warning(f'Class {classname} has multiple metaclasses: {", ".join(["{:#x}".format(mc) for mc in metaclasses])}')
-
-        # Filter out any metaclass (and its associated class names) that has multiple class names. I
-        # have no idea why this would happen.
-        def bad_metaclass(metaclass, classnames):
-            self.log.warning(f'Metaclass {metaclass:#x} has multiple classes: {", ".join(classnames)}')
-
-        # Return the final dictionary of metaclass info.
-        metaclass_to_classname = self._metaclass_to_classname_builder.build(bad_metaclass, bad_classname)
-        for metaclass_ea, classname in metaclass_to_classname.items():
-            meta_superclass = self._metaclass_to_super_metaclass[metaclass_ea]
-            superclass_name = metaclass_to_classname.get(meta_superclass, None)
-            info = class_info.ClassInfo(classname,
-                                        metaclass_ea,
-                                        self._metaclass_to_class_size[metaclass_ea],
-                                        superclass_name,
-                                        meta_superclass)
-            self._kc.class_info_map.add_classinfo(info)
+        self._populate_class_info_map()
 
         for classname_str, errors_ea_set in self._var_expr_errors.items():
             if classname_str in self._kc.class_info_map:
@@ -103,10 +83,12 @@ class CollectClasses(BasePhase):
                 self._num_unique_unresolved += 1
 
         # Print statistics
-        self.log.info(f'\n\ttotal:{self._num_xrefs} xrefs in {len(self._visited)} unique functions\n\t'
-                      f'succeeded:{self._num_succeeded}\n\t'
-                      f'failed:{self._num_failed} xrefs, a total of {self._num_unique_unresolved} unresolved classes\n\t'
-                      f'duplicates:{self._num_duplicates}\n\t')
+        self.log.info(f'Collection stats:\n'
+                      f'* total:{self._num_xrefs} xrefs in {len(self._visited)} unique functions\n'
+                      f'* succeeded:{self._num_succeeded}\n'
+                      f'* failed:{self._num_failed} xrefs, a total of {self._num_unique_unresolved} unresolved classes\n'
+                      f'* duplicates:{self._num_duplicates}\n'
+                      f'* dropped in one-to-one map:{self._num_dropped_in_one_to_one_map}\n')
 
     def _find_osmetaclass_constructor(self):
         """
@@ -252,5 +234,58 @@ class CollectClasses(BasePhase):
 
         self._metaclass_to_classname_builder.add_link(metaclass_ea, classname_str_clean)
         self._metaclass_to_class_size[metaclass_ea] = class_size
-        self._metaclass_to_super_metaclass[metaclass_ea] = super_metaclass_ea
+
+        # Only store information for non-null values!
+        if super_metaclass_ea:
+            self._metaclass_to_super_metaclass[metaclass_ea] = super_metaclass_ea
         return True
+
+    def _populate_class_info_map(self):
+        """
+        We are going to reconstruct the inheritance tree, creating a ClassInfo instance for every class
+        and connecting the nodes in the tree according to their relationship.
+
+        Each new instance of ClassInfo will be added to the ClassInfoMap object which indexes it both by
+        the classname and the metaclass_ea (each of which should be a unique identifier of this class in the current database)
+        """
+
+        # Filter out any class name (and its associated metaclasses) that has multiple metaclasses.
+        # This can happen when multiple kexts define a class but only one gets loaded.
+        def bad_classname(classname, metaclasses):
+            self.log.warning(f'Class {classname} has multiple metaclasses: {", ".join(["{:#x}".format(mc) for mc in metaclasses])}')
+
+        # Filter out any metaclass (and its associated class names) that has multiple class names. I
+        # have no idea why this would happen.
+        def bad_metaclass(metaclass, classnames):
+            self.log.warning(f'Metaclass {metaclass:#x} has multiple classes: {", ".join(classnames)}')
+
+        # Build a one-to-one mapping of metaclass_ea <--> class_name
+        one_to_one_map = self._metaclass_to_classname_builder.build(bad_metaclass, bad_classname)
+        self._num_dropped_in_one_to_one_map = self._num_succeeded - len(one_to_one_map)
+
+        # Start one iteration by creating every ClassInfo instance for every discovered class
+        for metaclass_ea, class_name in one_to_one_map.items():
+            classinfo = class_info.ClassInfo(class_name,
+                                             metaclass_ea,
+                                             self._metaclass_to_class_size[metaclass_ea])
+
+            self._kc.class_info_map.add_classinfo(classinfo)
+
+        for metaclass_ea, class_name, classinfo in self._kc.class_info_map.items():
+
+            # The root classes are those that do not have any superclass
+            if metaclass_ea not in self._metaclass_to_super_metaclass:
+                continue
+
+            super_metaclass_ea = self._metaclass_to_super_metaclass[metaclass_ea]
+
+            # For subclasses make sure that we haven't dropped the superclass in the one-to-one map building process
+            if super_metaclass_ea not in one_to_one_map:
+                raise PhaseException(f'Superclass not in one-to-one map but subclass is! {super_metaclass_ea:#x} {metaclass_ea:#x} {class_name}')
+
+            superclass_info = self._kc.class_info_map[super_metaclass_ea]
+
+            # Create parent-child link
+            self.log.debug(f'{superclass_info.class_name} ===> {classinfo.class_name}')
+            classinfo.superclass = superclass_info
+            superclass_info.subclasses.add(classinfo)

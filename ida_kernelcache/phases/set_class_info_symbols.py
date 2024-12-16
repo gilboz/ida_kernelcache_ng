@@ -1,5 +1,6 @@
 import idc
 
+import ida_kernelcache.consts as consts
 import ida_kernelcache.symbols as symbols
 import ida_kernelcache.ida_helpers.names as names
 from .base_phase import BasePhase
@@ -25,6 +26,10 @@ class SetClassInfoSymbols(BasePhase):
 
     def run(self):
         for classname, classinfo in self._kc.class_info_map.items_by_type(str):
+            if consts.CXX_SCOPE in classname:
+                self.log.warning(f'Skipping symbolication of {classname} because it contains {consts.CXX_SCOPE}!')
+                continue
+
             self._add_metaclass_instance_symbol(classinfo)
 
             # TODO: is this really how we want to handle classes without vtable information? Maybe we should use their superclass's vtable
@@ -37,7 +42,7 @@ class SetClassInfoSymbols(BasePhase):
         """
         Add a symbol for the OSMetaClass instance at the specified address.
         """
-        metaclass_instance_symbol = symbols.metaclass_symbol_for_class(classinfo.classname)
+        metaclass_instance_symbol = symbols.metaclass_symbol_for_class(classinfo.class_name)
         ea = classinfo.metaclass_ea
         if not names.set_ea_name(ea, metaclass_instance_symbol, rename=True):
             self.log.warning(f'Failed to set name at {classinfo.metaclass_ea:#x}! wanted {metaclass_instance_symbol}')
@@ -46,6 +51,6 @@ class SetClassInfoSymbols(BasePhase):
         """
         Set a symbol for the virtual method table at the specified address, renaming it if it already exists!
         """
-        vtable_symbol = symbols.vtable_symbol_for_class(classinfo.classname)
+        vtable_symbol = symbols.vtable_symbol_for_class(classinfo.class_name)
         if not names.set_ea_name(classinfo.vtable_ea, vtable_symbol, rename=True):
             self.log.warning(f'Failed to set name at {classinfo.vtable_ea:#x}! wanted {vtable_symbol}')

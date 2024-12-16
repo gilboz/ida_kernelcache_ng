@@ -20,18 +20,17 @@ class ClassInfo(object):
     Python class to store C++ class information from KernelCache.
     """
 
-    def __init__(self, classname: str, metaclass: int, class_size: int, superclass_name: str, meta_superclass: int, vtable_ea: int = idc.BADADDR, vtable_end_ea: int = idc.BADADDR):
-        self.superclass = None
-        self.subclasses = set()
-        self.classname = classname
+    def __init__(self, class_name: str, metaclass: int, class_size: int, superclass: 'ClassInfo' = None, vtable_ea: int = idc.BADADDR, vtable_end_ea: int = idc.BADADDR):
+        self.class_name = class_name
         self.metaclass_ea = metaclass
         self.class_size = class_size
-        self.superclass_name = superclass_name
-        self.meta_superclass = meta_superclass
 
         # There are several classes where vtable information is
         self.vtable_ea = vtable_ea
         self.vtable_end_ea = vtable_end_ea
+
+        self.superclass: 'ClassInfo | None' = None
+        self.subclasses = set()
 
     def __repr__(self):
         def hex(x):
@@ -40,9 +39,8 @@ class ClassInfo(object):
             return f'{x:#x}'
 
         return 'ClassInfo({!r}, {}, {}, {}, {}, {!r}, {})'.format(
-            self.classname, hex(self.metaclass_ea), hex(self.vtable_ea),
-            self.vtable_length, self.class_size, self.superclass_name,
-            hex(self.meta_superclass))
+            self.class_name, hex(self.metaclass_ea), hex(self.vtable_ea),
+            self.vtable_length, self.class_size)
 
     @property
     def vtable_length(self) -> int:
@@ -60,11 +58,11 @@ class ClassInfo(object):
 
     @property
     def vtable_num_methods(self) -> int:
-        assert self.vtable_length % consts.WORD_SIZE == 0, f'Invalid vtable length {self.vtable_length} for {self.classname}!'
+        assert self.vtable_length % consts.WORD_SIZE == 0, f'Invalid vtable length {self.vtable_length} for {self.class_name}!'
         return self.vtable_length // consts.WORD_SIZE
 
     def ancestors(self, inclusive: bool = False) -> ['ClassInfo', None, None]:
-        """A generator over all direct or indircet superclasses of this class.
+        """A generator over all direct or indirect superclasses of this class.
 
         Ancestors are returned in order from root (most distance) to superclass (closest), and the
         class itself is not returned.
@@ -105,6 +103,8 @@ class ClassInfoMap:
 
     def __init__(self):
         super().__init__()
+        self._keys: set[tuple[int, str]] = set()
+
         # A global map from metaclass_ea to ClassInfo objects.
         self.metaclass_ea_to_class_info: dict[int, ClassInfo] = {}
 
@@ -123,12 +123,13 @@ class ClassInfoMap:
     def _get_dict_from_key(self, key: int | str) -> dict:
         return self._get_dict_from_type(type(key))
 
-    def __setitem__(self, key: tuple[str, int], value):
+    def __setitem__(self, key: tuple[int, str], value):
         if not isinstance(key, tuple) or len(key) != 2:
             raise TypeError(f'Every key in this mapping must be of type: tuple[str, int]')
 
-        self.metaclass_ea_to_class_info.__setitem__(key[1], value)
-        self.classname_to_class_info.__setitem__(key[0], value)
+        self._keys.add(key)
+        self.metaclass_ea_to_class_info.__setitem__(key[0], value)
+        self.classname_to_class_info.__setitem__(key[1], value)
 
     def __getitem__(self, key):
         d = self._get_dict_from_key(key)
@@ -146,6 +147,7 @@ class ClassInfoMap:
         return all(bool(d) for d in self._key_type_to_dict.values())
 
     def clear(self):
+        self._keys.clear()
         for d in self._key_type_to_dict.values():
             d.clear()
 
@@ -153,11 +155,25 @@ class ClassInfoMap:
         """
         Just a helper method to index this class info in this map by both its classname and its metaclass_ea
         """
-        assert new_class_info.classname, 'invalid classname'
+        assert new_class_info.class_name, 'invalid classname'
         assert new_class_info.metaclass_ea, 'invalid metaclass_ea'
 
-        self[(new_class_info.classname, new_class_info.metaclass_ea)] = new_class_info
+        self[(new_class_info.metaclass_ea, new_class_info.class_name)] = new_class_info
 
     def items_by_type(self, key_type: type):
         d = self._get_dict_from_type(key_type)
         return d.items()
+
+    def items(self) -> (tuple[int, str, ClassInfo], None, None):
+        for key in self._keys:
+            value1, value2 = self[key[0]], self[key[1]]
+            assert value1 == value2, f'invalid state in ClassInfoMap for key {key}'
+            yield key[0], key[1], value1
+
+    def keys(self) -> (tuple[int, str], None, None):
+        for key in self._keys:
+            yield key
+
+    def values(self):
+        # It shouldn't matter which internal dictionary we use here
+        return self.metaclass_ea_to_class_info.values()

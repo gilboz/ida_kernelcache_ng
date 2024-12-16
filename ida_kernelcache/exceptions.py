@@ -14,6 +14,10 @@ class AlignmentError(Exception):
         return repr(self.address)
 
 
+class CreateSymbolFailed(PhaseException):
+    pass
+
+
 class InvalidKeyTypeError(PhaseException):
     """
     May be used to indicate that a key is not

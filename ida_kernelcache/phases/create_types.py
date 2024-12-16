@@ -1,3 +1,6 @@
+"""
+Refer to: https://docs.hex-rays.com/user-guide/user-interface/menu-bar/view/c++-type-details
+"""
 # Standard library
 from typing import Deque, TYPE_CHECKING
 from collections import deque
@@ -12,16 +15,10 @@ from ida_kernelcache.exceptions import PhaseException
 if TYPE_CHECKING:
     from ida_kernelcache.class_info import ClassInfo
 
-TYPE_DECL_NO_SUPERCLASS_TEMPLATE = '''\
-struct __cppobj {class_name} {
-
+CLASS_DECL_TEMPLATE = '''\
+class {class_name}{inheritance} {
+      
 };'''
-
-TYPE_DECL_TEMPLATE = '''\
-struct __cppobj {class_name} : {superclass_name} {
-    
-};'''
-
 
 class CreateTypes(BasePhase):
     """
@@ -45,7 +42,7 @@ class CreateTypes(BasePhase):
 
     def run(self):
 
-        queue: Deque[ClassInfo] = deque((ci for ci in self._kc.classes if ci.superclass is None))
+        queue: Deque[ClassInfo] = deque((ci for ci in self._kc.class_info_map.values() if ci.superclass is None))
 
         if not queue:
             pass
@@ -56,9 +53,9 @@ class CreateTypes(BasePhase):
             class_info = queue.popleft()
 
             if class_info.superclass:
-                type_declaration = f'struct __cppobj {class_info.classname} : {class_info.superclass_name} {{ }};'
+                type_declaration = f'struct __cppobj {class_info.class_name} : {class_info.superclass_name} {{ }};'
             else:
-                type_declaration = f'struct __cppobj {class_info.classname} {{ }};'
+                type_declaration = f'struct __cppobj {class_info.class_name} {{ }};'
 
             ida_typeinf.idc_parse_types(type_declaration)
 

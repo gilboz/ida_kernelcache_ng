@@ -66,9 +66,9 @@ class CollectVtables(BasePhase):
 
             if len(candidates) == 1:
                 self._metaclass_ea_to_getmetaclass_ea[metaclass_ea] = candidates.pop()
-                self.log.debug(f'Found {info.classname}::getMetaClass at {self._metaclass_ea_to_getmetaclass_ea[metaclass_ea]:#x} metaclass_ea {metaclass_ea:#x}')
+                self.log.debug(f'Found {info.class_name}::getMetaClass at {self._metaclass_ea_to_getmetaclass_ea[metaclass_ea]:#x} metaclass_ea {metaclass_ea:#x}')
             elif len(candidates) > 1:
-                self.log.error(f'Found multiple candidates for {info.classname}::getMetaClass! {", ".join(f"{x:#x}" for x in candidates)}')
+                self.log.error(f'Found multiple candidates for {info.class_name}::getMetaClass! {", ".join(f"{x:#x}" for x in candidates)}')
                 num_multiple += 1
             else:
                 self._not_found_set.add(metaclass_ea)
@@ -79,7 +79,7 @@ class CollectVtables(BasePhase):
         for metaclass_ea in self._not_found_set:
             # TODO: check if all of the references to this metaclass_ea is in __mod_init or __mod_term. Don't print and error if this is the case
             info = self._kc.class_info_map[metaclass_ea]
-            self.log.warning(f'Failed to find {info.classname}::getMetaClass! metaclass_ea {metaclass_ea:#x}')
+            self.log.warning(f'Failed to find {info.class_name}::getMetaClass! metaclass_ea {metaclass_ea:#x}')
 
         # Log statistics to the user
         self.log.info(f'Found {len(self._metaclass_ea_to_getmetaclass_ea)}/{len(self._kc.class_info_map)}! '
@@ -129,7 +129,7 @@ class CollectVtables(BasePhase):
         for metaclass_ea, getmetaclass_ea in self._metaclass_ea_to_getmetaclass_ea.items():
             classinfo = self._kc.class_info_map[metaclass_ea]
 
-            if classinfo.classname == 'OSMetaClass':
+            if classinfo.class_name == 'OSMetaClass':
                 # TODO: OSMetaClass::getMetaClass is referenced in all of the other MetaClasses
                 self.log.warning('Currently not collecting *::MetaClass vtables (needs to be implemented)')
                 continue
@@ -159,7 +159,7 @@ class CollectVtables(BasePhase):
                     num_vtable_methods += 1
 
                 vtable_end_ea = vtable_ea + num_vtable_methods * consts.WORD_SIZE + consts.VTABLE_FIRST_METHOD_OFFSET
-                self.log.debug(f'Found vtable of {classinfo.classname} {vtable_ea:#x}-{vtable_end_ea:#x} num methods:{num_vtable_methods}')
+                self.log.debug(f'Found vtable of {classinfo.class_name} {vtable_ea:#x}-{vtable_end_ea:#x} num methods:{num_vtable_methods}')
 
                 # TODO: do we need the One-To-One map ..?
                 classinfo.vtable_ea = vtable_ea
@@ -168,6 +168,6 @@ class CollectVtables(BasePhase):
 
             elif len(candidates) > 1:
                 candidates_str = ', '.join(hex(x) for x in candidates)
-                self.log.warning(f'{classinfo.classname} {getmetaclass_ea:#x} has multiple vtable candidates {candidates_str}')
+                self.log.warning(f'{classinfo.class_name} {getmetaclass_ea:#x} has multiple vtable candidates {candidates_str}')
             else:
-                self.log.error(f'No potential vtable xref to {classinfo.classname}::getMetaClass found!')
+                self.log.error(f'No potential vtable xref to {classinfo.class_name}::getMetaClass found!')

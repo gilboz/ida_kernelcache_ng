@@ -18,15 +18,23 @@ Much of the functionality in ida_kernelcache is borrowed from [memctl], which is
 under the MIT license. Other sources are noted in the comments in the corresponding files.
 
 ## TODO:
-- [ ] CollectClass phase resolve TODOs in the module
-- [ ] CollectVtables phase resolve TODOs in the module
-- [ ] Implement AddClassInfoSymbols phase
+- [X] Implement AddClassInfoSymbols phase
   - [ ] Change the global instances type to OSMetaClass * type (requires to create this type a-prior)
-- [ ] Implement create C++ types (conforming to IDA 7.2 new C++ types)
+  - [ ] Fix the mangling issue when classnames contain '::'...
+- [ ] Implement creation of C++ types (conforming to IDA 7.2 new C++ types)
+  - [ ] Actually in IDA 9.0 the API has been improved
+  - [ ] What about function signatures?
 - [ ] Improve Data flow analysis
   - [ ] No more gaps in structures
   - [ ] Scrape type information from kalloc_type/kalloc_type_var signatures?
 - [ ] Add an ida_undo point and restore IDB in case of an exception
 - [ ] Add a script to analyze the kernelcache using the new idalib (headless mode)
 - [ ] Improve plugin GUI
+  - [ ] A feature I think is nice is to show class hierarchy in a Graph View
+  - [ ] Another feature that could be nice is to show all the classes in a given kext
 - [ ] Kernel fixups 
+- [ ] Improve the name mangling
+- [ ] Symbolicate using panic strings
+- [ ] Symbolicate with os_log strings
+- [ ] CollectClass phase resolve TODOs in the module
+- [ ] CollectVtables phase resolve TODOs in the module

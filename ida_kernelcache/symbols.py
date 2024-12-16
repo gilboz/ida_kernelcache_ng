@@ -186,7 +186,7 @@ def _mangle_name(scopes):
     return symbol
 
 
-def vtable_symbol_for_class(classname):
+def vtable_symbol_for_class(classname) -> str:
     """Get the mangled symbol name for the vtable for the given class name.
 
     Arguments:
@@ -219,14 +219,6 @@ def clean_templated_name(templated_name: str) -> str:
     clean_name = templated_name.replace("<", "_").replace(">", "_").replace("*", "P")
     return clean_name
 
-
-def metaclass_name_for_class(classname):
-    """Return the name of the C++ metaclass for the given class."""
-    assert '::' not in classname
-    if '::' in classname:
-        return None
-    return classname + '::MetaClass'
-{}
 
 def metaclass_symbol_for_class(classname: str) -> str:
     """

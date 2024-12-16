@@ -55,7 +55,7 @@ Find virtual method overrides
             demangled = idc.demangle_name(name, idc.get_inf_attr(idc.INF_SHORT_DEMNAMES))
             name = demangled if demangled else name
             if method in name:
-                print('{:#x}  {}'.format(override, classinfo.classname))
+                print('{:#x}  {}'.format(override, classinfo.class_name))
                 found = True
     if not found:
         print('No subclass of {} overrides {}'.format(classname, method))
