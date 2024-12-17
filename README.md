@@ -19,16 +19,15 @@ under the MIT license. Other sources are noted in the comments in the correspond
 
 ## TODO:
 - [X] Implement AddClassInfoSymbols phase
+- [X] Add a test script to analyze the kernelcache using the new idalib (headless mode)
   - [ ] Change the global instances type to OSMetaClass * type (requires to create this type a-prior)
   - [ ] Fix the mangling issue when classnames contain '::'...
-- [ ] Implement creation of C++ types (conforming to IDA 7.2 new C++ types)
-  - [ ] Actually in IDA 9.0 the API has been improved
+- [ ] Implement creation of C++ types (conforming to IDA 7.2 new C++ types), actually in IDA 9.0 the API has been improved 
   - [ ] What about function signatures?
 - [ ] Improve Data flow analysis
   - [ ] No more gaps in structures
   - [ ] Scrape type information from kalloc_type/kalloc_type_var signatures?
 - [ ] Add an ida_undo point and restore IDB in case of an exception
-- [ ] Add a script to analyze the kernelcache using the new idalib (headless mode)
 - [ ] Improve plugin GUI
   - [ ] A feature I think is nice is to show class hierarchy in a Graph View
   - [ ] Another feature that could be nice is to show all the classes in a given kext
@@ -40,4 +39,6 @@ under the MIT license. Other sources are noted in the comments in the correspond
 - [ ] CollectVtables phase resolve TODOs in the module
 - [ ] Get rid of old code
   - [ ] utils.py OneToOneMap not really needed anymore (add checks are raise PhaseException upon duplicates!)
-  - 
+- [ ] Generate TIL from the XNU sources, that will fit iOS compilations and load it into IDA.
+  - [ ] CreateTypesPhase must align with it!
+- [ ] Change return type of OSMetaClassBase::safeMetaCast calls according to the metaclass operand

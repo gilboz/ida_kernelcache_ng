@@ -4,5 +4,10 @@ __pycache__
 build/
 *.egg-info/
 
-# Internal testing
-tests/
+# Temporary files I hold in my working directory but they should not be committed before going through a refactor
+# Mainly here for reference and my own convinience
+not_yet_refactored/
+
+tests/kernelcache_testing*
+
+
