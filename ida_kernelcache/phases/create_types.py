@@ -3,18 +3,19 @@ Refer to: https://docs.hex-rays.com/user-guide/user-interface/menu-bar/view/c++-
 """
 
 from collections import deque
-
-import idc
-
-from .base_phase import BasePhase
-import ida_kernelcache.consts as consts
-import ida_kernelcache.ida_helpers.types as types
-import ida_kernwin
-
 from typing import TYPE_CHECKING
 
-from .. import utils
-from ..exceptions import PhaseException
+import ida_kernwin
+import ida_typeinf
+import ida_xref
+import idautils
+import idc
+
+from ida_kernelcache import utils, consts
+from ida_kernelcache.exceptions import PhaseException
+from ida_kernelcache.ida_helpers import strings, functions, names
+from ida_kernelcache.ida_helpers import types
+from .base_phase import BasePhase
 
 if TYPE_CHECKING:
     from ida_kernelcache.rtti_info import ClassInfo
@@ -33,20 +34,38 @@ class CreateTypes(BasePhase):
 
     TODO: implement jump to indirect call by adding a comment including the vfunc ea in struct members of _vtable structures
     """
-    DEFAULT_OVERRIDE_CHOICE = 0
+    DEFAULT_OVERRIDE_CHOICE = 1
 
     def __init__(self, kc):
         super().__init__(kc)
 
     def run(self):
         # This check will raise an exception in case we cannot continue because there are conflicts
+        self._handle_pure_virtual()
         self._check_for_conflicts()
+        self._create_types_bfs()
+
+    def _handle_pure_virtual(self):
+        str_ea = strings.find_str(consts.CXA_PURE_VIRTUAL).ea
+        candidate = ida_xref.get_first_dref_to(str_ea)
+        if candidate == idc.BADADDR:
+            raise PhaseException(f'Could not find {consts.CXA_PURE_VIRTUAL} string reference!')
+
+        if ida_xref.get_next_dref_to(str_ea, candidate) != idc.BADADDR:
+            raise PhaseException(f'{consts.CXA_PURE_VIRTUAL} string has more than 1 xref!')
+
+        cxa_pure_virtual_ea = functions.get_func_start(candidate)
+        self.log.info(f'Found {consts.CXA_PURE_VIRTUAL} at {cxa_pure_virtual_ea:#x}')
+        new_func_name = f'_{consts.CXA_PURE_VIRTUAL}'
+
+        if not names.set_ea_name(cxa_pure_virtual_ea, new_func_name):
+            self.log.error(f'Failed to change the function name at {cxa_pure_virtual_ea:#x} to {new_func_name}')
 
     def _check_for_conflicts(self):
         num_conflicts = 0
         for _, class_name in self._kc.class_info_map.keys():
             if types.does_type_exist(class_name):
-                self.log.warning(f'{class_name} already exists!')
+                self.log.debug(f'{class_name} already exists!')
                 num_conflicts += 1
 
         if num_conflicts:
@@ -56,39 +75,66 @@ class CreateTypes(BasePhase):
                                      f'There are {num_conflicts} existing types')
 
     def _create_types_bfs(self):
+        """
+        Do a breadth first scan, the inheritance relationship forms a directed acylic graph so there is no need
+        to track down visited nodes
+        """
         queue: deque[ClassInfo] = deque((ci for ci in self._kc.class_info_map.values() if ci.superclass is None))
-
-        # Do a breadth first scan, the inheritance relationship forms a directed acylic graph so there is no need
-        # to track down visited nodes
-
+        num_created = 0
         while queue:
             class_info = queue.popleft()
 
             # TODO: handle types with unresolved vtables somehow..?
-            if class_info.vtable_ea == idc.BADADDR:
+            # TODO: Why we don't find OSMetaClass vtable?
+            if class_info.vtable_info is None:
                 self.log.warning(f'Not creating type for {class_info.class_name} and its {utils.iterlen(class_info.descendants())} descendants')
+                continue
 
             if class_info.class_size % consts.WORD_SIZE:
                 raise PhaseException(f'{class_info.class_name} size not aligned to {consts.WORD_SIZE}')
 
-            # Find superclass name!
-            superclass_name = ''
-            if class_info.superclass:
+            field_decls, func_decls = [], []
+            if class_info.is_subclass():
                 superclass_name = f': {class_info.superclass.class_name}'
+            else:
+                field_decls.append(consts.VPTR_FIELD)
+                superclass_name = ''
 
-            for i in range(class_info.vtable_num_methods):
+            for index, vtable_entry_ea, vmethod_ea in class_info.vtable_info.vmethods():
                 # TODO: implement get_ea_name and
-                func_name = consts.FUNC_NAME_TEMPlATE.format(i=i)
-
+                func_name = consts.FUNC_NAME_TEMPlATE.format(index=index)
                 # TODO: Implement get function signatures
-                consts.VIRTUAL_FUNC_TEMPLATE.format(func_name=func_name, func_sig='')
+                func_decls.append(consts.VIRTUAL_FUNC_TEMPLATE.format(func_name=func_name, func_sig='', vmethod_ea=vmethod_ea))
 
-            type_decl = consts.CLASS_DECL_TEMPLATE.format(
+            for offset in class_info.data_field_offsets():
+                field_decls.append(consts.DATA_FIELD_TEMPLATE.format(offset=offset))
+
+            cls_type_decl = consts.CPPOBJ_DECL_TEMPLATE.format(
+                metaclass_ea=class_info.metaclass_ea,
                 class_name=class_info.class_name,
                 superclass_name=superclass_name,
+                data_fields=consts.FIELD_SEP.join(field_decls)
             )
-            self.log.info(type_decl)
-            types.create_type_from_decl(type_decl)
 
-        for subclass in class_info.subclasses:
-            queue.append(subclass)
+            vtbl_type_decl = consts.VTABLE_DECL_TEMPLATE.format(
+                vtable_ea=class_info.vtable_info.vtable_ea,
+                class_name=class_info.class_name,
+                virtual_funcs=consts.FIELD_SEP.join(func_decls),
+            )
+
+            types.create_type_from_decl(f'{cls_type_decl}\n{vtbl_type_decl}', replace=True)
+            class_local_type = types.LocalType(class_info.class_name)
+            vtable_local_type = types.LocalType(f'{class_info.class_name}_vtbl')
+
+            self.log.debug(f'Created class+vtable types for {class_info.class_name}! ordinals: {class_local_type.ordinal} {vtable_local_type.ordinal}')
+            if not class_info.is_subclass():
+                self.log.info(f'Changing __vftable type in {class_info.class_name}')
+                class_local_type.set_member_type(0, f'{class_info.class_name}_vtbl *')
+
+            vtable_local_type.udt.set_vftable(True)
+            ida_typeinf.set_vftable_ea(vtable_local_type.ordinal, class_info.vtable_info.vtable_ea)
+
+            num_created += 1
+            for subclass in class_info.subclasses:
+                queue.append(subclass)
+        self.log.info(f'Created {num_created} new types!')

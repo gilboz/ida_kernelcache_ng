@@ -14,17 +14,6 @@ from ida_kernelcache.exceptions import PhaseException
 read_ptr = ida_bytes.get_qword
 
 
-def get_func_start(ea: int, raise_error: bool = True) -> int:
-    f = ida_funcs.get_func(ea)
-    if f is None:
-        if raise_error:
-            raise PhaseException(f'Failed to find function start address of {ea:#x}')
-        else:
-            return idc.BADADDR
-
-    return f.start_ea
-
-
 def is_mapped(ea, size=1, value=True):
     """
     Check if the given address is mapped.

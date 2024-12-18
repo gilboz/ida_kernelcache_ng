@@ -21,6 +21,7 @@ import ida_kernelcache.ida_helpers.decompiler as decompiler
 import ida_kernelcache.ida_helpers.names as names
 import ida_kernelcache.ida_helpers as ida_helpers
 from ..consts import OSMETACLASS_CTOR_SYMBOL
+from ..ida_helpers import strings, functions
 
 
 class CollectClasses(BasePhase):
@@ -91,20 +92,17 @@ class CollectClasses(BasePhase):
         """
         Locate OSMetaClass::OSMetaClass function. We do this by finding the first reference to the OSObject string
         """
-        try:
-            OSObject_str = next(s for s in idautils.Strings() if str(s) == "OSObject")
-        except StopIteration:
-            raise PhaseException("Couldn't find OSObject str")
+        osobject_str_ea = strings.find_str("OSObject").ea
 
         # Surprisingly this hack works.. the first dref is the OSMetaClass::OSMetaClass constructor we are looking for
-        OSObject_xref = ida_xref.get_first_dref_to(OSObject_str.ea)
+        OSObject_xref = ida_xref.get_first_dref_to(osobject_str_ea)
 
         # Decompile the method using hexrays
         cfunc = ida_hexrays.decompile(OSObject_xref)
         if cfunc is None:
             raise PhaseException("hexrays decompilation failed! did IDA finish processing the kernel yet?")
 
-        visitor = decompiler.FindCallByArgVisitor(OSObject_str.ea)
+        visitor = decompiler.FindCallByArgVisitor(osobject_str_ea)
         visitor.apply_to(cfunc.body, parent=None)
 
         if not visitor.found:
@@ -115,15 +113,16 @@ class CollectClasses(BasePhase):
         names.set_ea_name(self.osmetaclass_constructor_ea, OSMETACLASS_CTOR_SYMBOL)
 
     def _find_osmetaclass_constructor_with_zone(self):
+        # TODO: Finish this implementation!
         try:
-            IOSurface_str = next(s for s in idautils.Strings() if str(s) == "IOSurface")
+            iosurface_str_ea = strings.find_str("IOSurface").ea
         except StopIteration:
             raise PhaseException("Couldn't find OSObject str")
 
-        visitor = decompiler.FindCallByArgVisitor(IOSurface_str.ea)
+        visitor = decompiler.FindCallByArgVisitor(iosurface_str_ea)
 
-        for xref_ea in idautils.DataRefsTo(IOSurface_str.ea):
-            func_start_ea = ida_helpers.get_func_start(xref_ea)
+        for xref_ea in idautils.DataRefsTo(iosurface_str_ea):
+            func_start_ea = functions.get_func_start(xref_ea)
 
             # Decompile the method using hexrays
             cfunc = ida_hexrays.decompile(func_start_ea)
@@ -149,7 +148,7 @@ class CollectClasses(BasePhase):
             # choose to skip them.
             for xref_ea in idautils.CodeRefsTo(self.osmetaclass_constructor_ea, flow=False):
                 self._num_xrefs += 1
-                func_start_ea = ida_helpers.get_func_start(xref_ea)
+                func_start_ea = functions.get_func_start(xref_ea)
                 self._visited.add(func_start_ea)
                 if self._handle_callsite(xref_ea):
                     self._num_succeeded += 1

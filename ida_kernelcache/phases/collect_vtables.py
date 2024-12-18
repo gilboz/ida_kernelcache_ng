@@ -6,7 +6,7 @@ import idc
 
 from ida_kernelcache import consts, rtti_info
 from ida_kernelcache.exceptions import PhaseException
-from ida_kernelcache.ida_helpers import decompiler, generators
+from ida_kernelcache.ida_helpers import decompiler, generators, functions
 import ida_kernelcache.ida_helpers as ida_helpers
 from .base_phase import BasePhase
 
@@ -152,7 +152,7 @@ class CollectVtables(BasePhase):
                         break
 
                     # If this happens this is probably because IDA auto-analysis failed to determine function boundaries correctly
-                    if ida_helpers.get_func_start(vmethod_ea, raise_error=False) != vmethod_ea:
+                    if functions.get_func_start(vmethod_ea, raise_error=False) != vmethod_ea:
                         # TODO: solve this by fixing the __noreturn attribute missing from panic functions upon initial analysis
                         self.log.debug(f'Virtual method {num_vtable_methods + 1} points to {vmethod_ea:#x} which is not the start of a function!')
 

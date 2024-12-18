@@ -5,5 +5,6 @@
 from .collect_classes import CollectClasses
 from .collect_vtables import CollectVtables
 from .set_class_info_symbols import SetClassInfoSymbols
+from .create_types import CreateTypes
 
-ALL_PHASES = [CollectClasses, CollectVtables, SetClassInfoSymbols]
+ALL_PHASES = [CollectClasses, CollectVtables, SetClassInfoSymbols, CreateTypes]

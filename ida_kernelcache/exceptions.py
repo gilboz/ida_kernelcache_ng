@@ -26,6 +26,22 @@ class CreateSymbolFailed(PhaseException):
     pass
 
 
+class StringNotFoundError(PhaseException):
+    pass
+
+
+class LocalTypeError(PhaseException):
+    pass
+
+
+class FailedToCreateTypeError(LocalTypeError):
+    pass
+
+
+class TypeNotFoundError(LocalTypeError):
+    pass
+
+
 class InvalidKeyTypeError(PhaseException):
     """
     May be used to indicate that a key is not

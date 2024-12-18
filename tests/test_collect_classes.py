@@ -4,6 +4,7 @@ import ida_kernelcache.phases
 
 DB_PATH = r'./kernelcache_testing.i64'
 
+
 def main():
     print('Opening DB')
     err = idapro.open_database(DB_PATH, run_auto_analysis=False)

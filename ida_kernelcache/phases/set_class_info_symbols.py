@@ -45,7 +45,7 @@ class SetClassInfoSymbols(BasePhase):
         metaclass_instance_symbol = symbols.metaclass_symbol_for_class(classinfo.class_name)
         ea = classinfo.metaclass_ea
         if not names.set_ea_name(ea, metaclass_instance_symbol, rename=True):
-            self.log.warning(f'Failed to set name at {classinfo.metaclass_ea:#x}! wanted {metaclass_instance_symbol}')
+            self.log.error(f'Failed to set name at {classinfo.metaclass_ea:#x}! wanted {metaclass_instance_symbol}')
 
     def _add_vtable_symbol(self, classinfo: 'ClassInfo') -> None:
         """
@@ -53,4 +53,4 @@ class SetClassInfoSymbols(BasePhase):
         """
         vtable_symbol = symbols.vtable_symbol_for_class(classinfo.class_name)
         if not names.set_ea_name(classinfo.vtable_info.vtable_ea, vtable_symbol, rename=True):
-            self.log.warning(f'Failed to set name at {classinfo.vtable_info.vtable_ea:#x}! wanted {vtable_symbol}')
+            self.log.error(f'Failed to set name at {classinfo.vtable_info.vtable_ea:#x}! wanted {vtable_symbol}')

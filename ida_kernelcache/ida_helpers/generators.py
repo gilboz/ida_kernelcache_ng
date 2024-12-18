@@ -115,7 +115,7 @@ def ReadWords(start, end, step=WORD_SIZE, wordsize=WORD_SIZE, addresses=False):
         if word is None:
             break
         if addresses:
-            yield word, addr
+            yield addr, word
         else:
             yield word
 

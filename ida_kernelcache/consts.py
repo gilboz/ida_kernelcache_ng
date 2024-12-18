@@ -15,13 +15,33 @@ GLOBAL_METACLASS_INSTANCE_NAME = 'gMetaclass'
 # Scope resolution operator
 CXX_SCOPE = '::'
 
-
-
 # Related to CreateTypes
+CXA_PURE_VIRTUAL = '__cxa_pure_virtual'
 FUNC_NAME_TEMPlATE = 'vmethod_{index}'
-VIRTUAL_FUNC_TEMPLATE = 'virtual __int64 {func_name}({func_sig});'
+FIELD_SEP = '\n    '
+
+VIRTUAL_FUNC_TEMPLATE = '__int64 (__fastcall *{func_name})({func_sig}); ///< {vmethod_ea:#x}'
+VPTR_FIELD = 'void *__vftable;'
+DATA_FIELD_TEMPLATE = '__int64 field_{offset:#04x};'
+VTABLE_DECL_TEMPLATE = '''\
+/// {vtable_ea:#x}
+struct {class_name}_vtbl {{
+    unsigned __int64 this_offset;
+    void *rtti;
+    {virtual_funcs}
+}};'''
+
+CPPOBJ_DECL_TEMPLATE = '''\
+/// {metaclass_ea:#x}
+struct __cppobj {class_name}{superclass_name} {{
+    {data_fields}
+}};'''
+
+# This syntax was added in IDA 9.0 and it does work but we don't have real control about the fields of the
 CLASS_DECL_TEMPLATE = '''\
 class {class_name}{superclass_name} {{
-{virtual_funcs}
-{data_fields}
+    virtual void this_offset();
+    virtual void rtti();
+    {virtual_funcs}
+    {data_fields}
 }};'''

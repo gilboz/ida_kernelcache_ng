@@ -13,9 +13,14 @@ def main():
         exit(1)
 
     kc = kernelcache.KernelCache()
-    kc.process()
+    try:
+        kc.process()
+    except Exception as e:
+        print(f'Failed early!')
+        raise
 
-    idapro.close_database()
+    finally:
+        idapro.close_database()
 
 
 if __name__ == '__main__':

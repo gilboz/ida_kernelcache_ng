@@ -10,6 +10,7 @@ It uses both metaclass_ea and classname as indexes to the ClassInfo instances th
 """
 from ida_kernelcache import consts
 from ida_kernelcache.exceptions import ClassHasVtableError, VtableHasClassError
+from ida_kernelcache.ida_helpers import generators
 
 
 class ClassInfo(object):
@@ -30,7 +31,7 @@ class ClassInfo(object):
         return f'<ClassInfo {self.class_name}, size:{self.class_size}, metaclass:{self.metaclass_ea:#x}>'
 
     @property
-    def vtable_info(self):
+    def vtable_info(self) -> 'VtableInfo | None':
         return self._vtable_info
 
     @vtable_info.setter
@@ -38,6 +39,33 @@ class ClassInfo(object):
         if self._vtable_info:
             raise ClassHasVtableError(f'{self.class_name} is already associated with vtable at {self._vtable_info.vtable_ea:#x}')
         self._vtable_info = vtable_info
+
+    def is_subclass(self) -> bool:
+        return self.superclass is not None
+
+    def data_field_offsets(self) -> (int, None, None):
+        """
+        A generator that yields the offsets of every data field that is specific to this class.
+
+        For example consider the following scenario:
+        class A {
+            __int64 field_0x00;
+            __int64 field_0x08;
+        }
+
+        // B inherits field_0x00 and field_0x08 from its superclass so its fields start at 0x10
+        class B : A {
+            __int64 field_0x10;
+            __int64 field_0x18;
+        }
+        """
+        assert self.class_size % consts.WORD_SIZE == 0, 'invalid class_size!'
+
+        # If this is not a subclass then data fields are going to start after the vptr
+        start_offset = self.superclass.class_size if self.is_subclass() else consts.WORD_SIZE
+
+        for offset in range(start_offset, self.class_size, consts.WORD_SIZE):
+            yield offset
 
     def ancestors(self, inclusive: bool = False) -> ['ClassInfo', None, None]:
         """A generator over all direct or indirect superclasses of this class.
@@ -76,12 +104,13 @@ class VtableInfo:
     """
 
     def __init__(self, vtable_ea: int, vtable_end_ea: int, class_info: ClassInfo | None = None):
+        # Vtable EA is the offset 0 of the vtable (every vtable in the kernelcache starts with two nulls)
         self.vtable_ea = vtable_ea
-        self.vtable_end_ea = vtable_end_ea
+        self.end_ea = vtable_end_ea
         self._class_info = class_info
 
     def __len__(self):
-        return self.vtable_length
+        return self.length
 
     @property
     def class_info(self):
@@ -94,23 +123,45 @@ class VtableInfo:
         self._class_info = class_info
 
     @property
-    def vtable_length(self) -> int:
+    def length(self) -> int:
         """
         This property is the number of bytes for the whole vtable
         """
-        return self.vtable_end_ea - self.vtable_ea
+        return self.end_ea - self.vtable_ea
 
     @property
-    def vtable_methods_start(self) -> int:
+    def start_ea(self) -> int:
         """
         The EA of the first actual method in the vtable
         """
         return self.vtable_ea + consts.VTABLE_FIRST_METHOD_OFFSET
 
     @property
-    def vtable_num_methods(self) -> int:
-        assert self.vtable_length % consts.WORD_SIZE == 0, f'Invalid vtable length {self.vtable_length} for {self.class_name}!'
-        return self.vtable_length // consts.WORD_SIZE
+    def num_vmethods(self) -> int:
+        assert self.length % consts.WORD_SIZE == 0, f'Invalid vtable length {self.length} for {self.class_info.class_name}!'
+        return self.length // consts.WORD_SIZE
+
+    def vmethods(self) -> (tuple[int, int], None, None):
+        """
+        This generator yields all the vmethods in the vtable with their addresses
+        tuple[index, vtable_entry_ea, vmethod_ea]
+
+        Consider the following demo vtable:
+
+        Linear Address     DCQ
+        0xFFFFFFFFFFFF0000 0xFFFFFFFF41414141 OSObject::vmethod_0
+        0xFFFFFFFFFFFF0008 0xFFFFFFFF42424242 OSObject::vmethod_1
+        0xFFFFFFFFFFFF0010 0xFFFFFFFF43434343 OSObject::vmethod_2
+        0xFFFFFFFFFFFF0018 0xFFFFFFFF44444444 OSObject::vmethod_3
+
+        This generator shall yield the following values:
+        (0, FFFFFFFFFFFF0000, 0xFFFFFFFF41414141)
+        (1, FFFFFFFFFFFF0008, 0xFFFFFFFF42424242)
+        (2, FFFFFFFFFFFF0010, 0xFFFFFFFF43434343)
+        (3, FFFFFFFFFFFF0018, 0xFFFFFFFF44444444)
+        """
+        for index, (vtable_entry_ea, vmethod_ea) in enumerate(generators.ReadWords(self.start_ea, self.end_ea, addresses=True)):
+            yield index, vtable_entry_ea, vmethod_ea
 
 
 class ClassInfoMap:
