@@ -11,7 +11,7 @@ import ida_xref
 import idautils
 import idc
 
-from ida_kernelcache import utils, consts
+from ida_kernelcache import utils, consts, rtti_info
 from ida_kernelcache.exceptions import PhaseException
 from ida_kernelcache.ida_helpers import strings, functions, names
 from ida_kernelcache.ida_helpers import types
@@ -61,6 +61,9 @@ class CreateTypes(BasePhase):
         if not names.set_ea_name(cxa_pure_virtual_ea, new_func_name):
             self.log.error(f'Failed to change the function name at {cxa_pure_virtual_ea:#x} to {new_func_name}')
 
+        # Store this information in the VtableInfo class, this will be used when constructing the VtableEntry instances
+        rtti_info.VtableInfo.CXA_PURE_VIRTUAL_EA = cxa_pure_virtual_ea
+
     def _check_for_conflicts(self):
         num_conflicts = 0
         for _, class_name in self._kc.class_info_map.keys():
@@ -100,11 +103,11 @@ class CreateTypes(BasePhase):
                 field_decls.append(consts.VPTR_FIELD)
                 superclass_name = ''
 
-            for index, vtable_entry_ea, vmethod_ea in class_info.vtable_info.vmethods():
+            for vtable_entry in class_info.vtable_info.entries:
                 # TODO: implement get_ea_name and
-                func_name = consts.FUNC_NAME_TEMPlATE.format(index=index)
+                func_name = consts.FUNC_NAME_TEMPlATE.format(index=vtable_entry.index)
                 # TODO: Implement get function signatures
-                func_decls.append(consts.VIRTUAL_FUNC_TEMPLATE.format(func_name=func_name, func_sig='', vmethod_ea=vmethod_ea))
+                func_decls.append(consts.VIRTUAL_FUNC_TEMPLATE.format(func_name=func_name, func_sig='', vmethod_ea=vtable_entry.vmethod_ea))
 
             for offset in class_info.data_field_offsets():
                 field_decls.append(consts.DATA_FIELD_TEMPLATE.format(offset=offset))

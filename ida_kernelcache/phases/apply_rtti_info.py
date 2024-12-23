@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from ida_kernelcache.rtti_info import ClassInfo
 
 
-class SetClassInfoSymbols(BasePhase):
+class ApplyRTTIInfoPhase(BasePhase):
     """
     Populate IDA with symbols according to the OSMetaClass metadata we've gained so far!
     In high-level this phase will the following:

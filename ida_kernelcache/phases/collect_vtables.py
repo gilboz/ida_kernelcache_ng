@@ -7,7 +7,6 @@ import idc
 from ida_kernelcache import consts, rtti_info
 from ida_kernelcache.exceptions import PhaseException
 from ida_kernelcache.ida_helpers import decompiler, generators, functions
-import ida_kernelcache.ida_helpers as ida_helpers
 from .base_phase import BasePhase
 
 
@@ -19,9 +18,6 @@ class CollectVtables(BasePhase):
 
     def __init__(self, kc):
         super().__init__(kc)
-
-        # Build a mapping from OSMetaClass instances to virtual method tables.
-        # self._metaclass_to_vtable_builder = OneToOneMapFactory()
 
         # Track metaclass ea that we could not find the ::getMetaClass
         self._associated_vtables: set[int] = set()

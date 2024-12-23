@@ -8,6 +8,10 @@ build/
 # Mainly here for reference and my own convinience
 not_yet_refactored/
 
-tests/kernelcache_testing*
+tests/kernelcache*
+
+# Not ready
+tests/test_patches.py
+tests/patch_undecoded.py
 
 

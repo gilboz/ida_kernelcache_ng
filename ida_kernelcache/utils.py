@@ -1,6 +1,18 @@
 from collections import defaultdict
 
 
+def get_pac(signed_ptr):
+    """
+    Return MOVK pac code from decorated pointer
+    Based on https://github.com/Synacktiv-contrib/kernelcache-laundering/blob/master/ios12_kernel_cache_helper.py
+    """
+    if signed_ptr & 0x4000000000000000 != 0:
+        return None
+    if signed_ptr & 0x8000000000000000 == 0:
+        return None
+    return (signed_ptr >> 32) & 0xFFFF
+
+
 def iterlen(iterator):
     """
     Consume an iterator and return its length.

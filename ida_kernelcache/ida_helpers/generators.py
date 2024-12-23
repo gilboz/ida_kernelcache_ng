@@ -1,3 +1,5 @@
+import ida_bytes
+import ida_ida
 import idautils
 import idc
 import re
@@ -174,3 +176,14 @@ def Instructions(start, end=None, count=None):
         return _instructions_by_range(start, end)
     else:
         return _instructions_by_count(start, count)
+
+
+def CodeHeads():
+    start = ida_ida.inf_get_min_ea()
+    end = ida_ida.inf_get_max_ea()
+
+    ea = start
+    while ea < end and ea != idc.BADADDR:
+        if ida_bytes.is_code(ida_bytes.get_flags(ea)):
+            yield idautils.DecodeInstruction(ea)
+        ea = ida_bytes.next_head(ea, end)

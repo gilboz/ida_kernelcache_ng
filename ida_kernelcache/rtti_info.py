@@ -8,10 +8,17 @@ These classes are responsible for sotring information about a C++ RTTI informati
 The ClassInfoMap is meant to hold all of this information in an easy to use and fast data structure.
 It uses both metaclass_ea and classname as indexes to the ClassInfo instances that are created in the CollectClasses phase
 """
-from ida_kernelcache import consts
-from ida_kernelcache.exceptions import ClassHasVtableError, VtableHasClassError
+import logging
+import dataclasses
+
+import ida_bytes
+import idc
+
+from ida_kernelcache import consts, utils
+from ida_kernelcache.exceptions import ClassHasVtableError, VtableHasClassError, PhaseException
 from ida_kernelcache.ida_helpers import generators
 
+log = logging.getLogger(__name__)
 
 class ClassInfo(object):
     """
@@ -98,15 +105,29 @@ class ClassInfo(object):
                 yield descendant
 
 
+@dataclasses.dataclass
+class VtableEntry:
+    index: int
+    entry_ea: int
+    vmethod_ea: int
+    pac_diversifier: int
+    overrides: bool
+    pure_virtual: bool
+
+
 class VtableInfo:
     """
     Current design only allows a one-to-one relationship between a ClassInfo instance and a VtableInfo instance
     """
 
+    CXA_PURE_VIRTUAL_EA: int = idc.BADADDR
+
     def __init__(self, vtable_ea: int, vtable_end_ea: int, class_info: ClassInfo | None = None):
         # Vtable EA is the offset 0 of the vtable (every vtable in the kernelcache starts with two nulls)
         self.vtable_ea = vtable_ea
         self.end_ea = vtable_end_ea
+
+        self._cached_entries: list[VtableEntry] = []
         self._class_info = class_info
 
     def __len__(self):
@@ -140,6 +161,40 @@ class VtableInfo:
     def num_vmethods(self) -> int:
         assert self.length % consts.WORD_SIZE == 0, f'Invalid vtable length {self.length} for {self.class_info.class_name}!'
         return self.length // consts.WORD_SIZE
+
+    @property
+    def entries(self) -> list[VtableEntry]:
+
+        # If we already calculated the entries we can return them
+        if self._cached_entries:
+            return self._cached_entries
+
+        # If this vtable belongs to a subclass of some other class we can determine which functions have been overridden
+        superclass_vtable_info = None
+        if self.class_info.is_subclass():
+            superclass_vtable_info = self.class_info.superclass.vtable_info
+
+        for index, vtable_entry_ea, vmethod_ea in self.vmethods():
+            pure_virtual = vmethod_ea == self.CXA_PURE_VIRTUAL_EA
+            signed_ptr = ida_bytes.get_original_qword(vtable_entry_ea)
+            if signed_ptr == vmethod_ea:
+                # raise PhaseException(f'vmethod at {vtable_entry_ea:#x} does not seem to be a signed PAC pointer')
+                log.error(f'vmethod at {vtable_entry_ea:#x} does not seem to be a signed PAC pointer')
+                pac_diversifier = -1
+            else:
+                pac_diversifier = utils.get_pac(signed_ptr)
+            overrides = False
+            if superclass_vtable_info and index < len(superclass_vtable_info.entries):
+                super_vtable_entry = superclass_vtable_info.entries[index]
+                overrides = super_vtable_entry.vmethod_ea != vmethod_ea
+
+            # Create a new vtable entry
+            vtable_entry = VtableEntry(index, vtable_entry_ea, vmethod_ea, pac_diversifier, overrides, pure_virtual)
+
+            # Store it in the cached entries
+            self._cached_entries.append(vtable_entry)
+
+        return self._cached_entries
 
     def vmethods(self) -> (tuple[int, int], None, None):
         """

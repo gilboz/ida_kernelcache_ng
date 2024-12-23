@@ -19,29 +19,42 @@ under the MIT license. Other sources are noted in the comments in the correspond
 
 ## TODO:
 - [X] Implement AddClassInfoSymbols phase
+- [X] Adapt to the new Plugin API 
 - [X] Add a test script to analyze the kernelcache using the new idalib (headless mode)
+- [ ] Get rid of old code! 
+  - [ ] Replace and remove build_struct.py
+  - [ ] utils.py OneToOneMap not really needed anymore (add checks are raise PhaseException upon duplicates!)
+- [ ] Rename SetClassInfoSymbols phase to UseRTTIInfoPhase and improve it
   - [ ] Change the global instances type to OSMetaClass * type (requires to create this type a-prior)
-  - [ ] Fix the mangling issue when classnames contain '::'...
+  - [ ] Change the types of every vtable it the Class_vtbl type
 - [X] Implement creation of C++ types (conforming to IDA 7.2 new C++ types), actually in IDA 9.0 the API has been improved 
-  - [ ] Implement fetching function names
-  - [ ] Implement better function signatures
-  - [ ] Implement 
-- [ ] Interactive renaming of methods that are related to a vtable, change the related function struct
+  - [X] Implement detecting overridden functions and functions that are pure virtual
+  - [X] Implement getting the PAC diversifier of every vtable entry
+  - [ ] Fix errors " does not seem to be a signed PAC pointer" 
+  - [ ] Implement fetching function names if they are already set
+  - [ ] Implement fetching function signatures
+- [ ] Add CollectPACCallSites Phase (search for MOVKS followed by BLRAAs)
+- [ ] Kernel fixups (auto analysis) 
+- [ ] Change return type of OSMetaClassBase::safeMetaCast calls according to the metaclass operand
 - [ ] Improve Data flow analysis
-  - [ ] No more gaps in structures
+  - [X] No more gaps in structures (just handled now in the way that I build the structures, might break in the future)
   - [ ] Scrape type information from kalloc_type/kalloc_type_var signatures?
 - [ ] Add an ida_undo point and restore IDB in case of an exception
-- [ ] Improve plugin GUI
-  - [ ] A feature I think is nice is to show class hierarchy in a Graph View
-  - [ ] Another feature that could be nice is to show all the classes in a given kext
-- [ ] Kernel fixups 
+- [ ] Interactive renaming of methods that are related to a vtable, change the related function struct (See vds_hooks.py example in IDAPython repository)
+
 - [ ] Improve the name mangling
-- [ ] Symbolicate using panic strings
-- [ ] Symbolicate with os_log strings
-- [ ] CollectClass phase resolve TODOs in the module
-- [ ] CollectVtables phase resolve TODOs in the module
-- [ ] Get rid of old code
-  - [ ] utils.py OneToOneMap not really needed anymore (add checks are raise PhaseException upon duplicates!)
+- [ ] Symbolicate using panic strings and os_log strings
+  - [X] Implement caching of the vtables contents using a VtableEntry abstraction
 - [ ] Generate TIL from the XNU sources, that will fit iOS compilations and load it into IDA.
   - [ ] CreateTypesPhase must align with it!
-- [ ] Change return type of OSMetaClassBase::safeMetaCast calls according to the metaclass operand
+- [ ] Modify the install.sh script so that it will create a symlink to this plugin source instead of placing a stub.
+- [X] Handle opcodes that IDA fails to decode. Currently done via a procmodule extension
+- [X] Add a test script that can be used to search for more undecoded bytes in code segments (ida_bytes.get_flags(ea)) after a binary has completed auto analysis (for development purposes..)
+- [ ] Resolve TODOs for edge cases in all of the phases
+- [ ] Improve plugin GUI
+  - [ ] Fix the wait box for updating the current phase that is executing
+  - [ ] Add a Widget to select the phases which the user may run
+  - [ ] Add a button to dump the findings to file outside of IDA
+  - [ ] A feature I think is nice is to show class hierarchy in a Graph View
+  - [ ] Another feature that could be nice is to show all the classes in a given kext
+  - [ ] Fix the mangling issue when classnames contain '::'...

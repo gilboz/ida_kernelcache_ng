@@ -4,6 +4,7 @@ import re
 import ida_auto
 import ida_segment
 import idaapi
+import ida_kernwin
 import idc
 import logging
 from ida_kernelcache import (
@@ -110,9 +111,9 @@ class KernelCache(object):
             log.error('Unsupported IDA version. The minimum requirement is to run IDA 9.0!')
             return False
 
-        filetype = idaapi.get_file_type_name()
-        if ('Mach-O' not in filetype and 'kernelcache' not in filetype) or 'ARM64' not in filetype:
-            log.error(f'Unsupported file type! This script supports ARM64 kernelcaches only!"')
+        file_type = idaapi.get_file_type_name()
+        if ('Mach-O' not in file_type and 'kernelcache' not in file_type) or 'ARM64' not in file_type:
+            log.error(f'Unsupported file type: "{file_type}"! This script supports ARM64 kernelcaches only!"')
             return False
         return True
 
@@ -132,24 +133,32 @@ class KernelCache(object):
         if not self.is_supported():
             return
 
-        log.info('processing kernelcache..')
         if not phases:
             phases = ALL_PHASES
 
+        ida_kernwin.show_wait_box(f'Processing kernelcaches with {len(phases)} phases')
+
         # Run all phases
-        for phase_cls in phases:
+        for i, phase_cls in enumerate(phases):
+            ida_kernwin.replace_wait_box(f'Processing phase: {phase_cls.__name__} step:{i}/{len(phases)}')
             log.info(f'***** Starting phase: {phase_cls.__name__} *****')
             phase = phase_cls(self)
 
             try:
                 phase.run()
             except PhaseException as ex:
-                if True:
-                    log.exception(ex)
-                raise
+                log.error('Encountered an error while processing the kernelcache')
+                log.exception(ex)
+                break
+            except Exception as ex:
+                log.error('Encountered an unknown exception while processing')
+                log.exception(ex)
+                break
             else:
                 log.info(f'***** Finished phase: {phase_cls.__name__} *****')
 
             # Wait for auto analysis to complete after every phase.
             # Honestly I'm not sure if this is needed but the auto analyzer is IDLE it will return immediately
             ida_auto.auto_wait()
+
+        ida_kernwin.hide_wait_box()

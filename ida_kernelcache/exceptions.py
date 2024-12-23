@@ -41,7 +41,6 @@ class FailedToCreateTypeError(LocalTypeError):
 class TypeNotFoundError(LocalTypeError):
     pass
 
-
 class InvalidKeyTypeError(PhaseException):
     """
     May be used to indicate that a key is not
