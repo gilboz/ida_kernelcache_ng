@@ -141,3 +141,10 @@ class CreateTypes(BasePhase):
             for subclass in class_info.subclasses:
                 queue.append(subclass)
         self.log.info(f'Created {num_created} new types!')
+
+# TODO: add force_function functionality either to this phase or an indepenedent phase
+# def _convert_vtable_methods_to_functions(vtable, length):
+#     """Convert each virtual method in the vtable into an IDA function."""
+#     for vmethod in vtable_methods(vtable, length=length):
+#         if not idau.force_function(vmethod):
+#             _log(0, 'Could not convert virtual method {:#x} into a function', vmethod)

@@ -14,9 +14,8 @@ def main():
 
     kc = kernelcache.KernelCache()
     kc.process(phases=[ida_kernelcache.phases.CollectClasses])
-
     print(f'Found a total of {len(kc.class_info_map)}')
-    idapro.close_database()
+    idapro.close_database(save=False)
 
 
 if __name__ == '__main__':

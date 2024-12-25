@@ -17,14 +17,14 @@ class IDAKernelCachePluginMod(idaapi.plugmod_t):
         print('[ida_kernelcache_ng] plugmod constructor called!')
         self.kc = KernelCache()
         self.idp_hooks = IDPHooks()
-        self.idp_hooks.hook()
+        # self.idp_hooks.hook()
         print('[ida_kernelcache_ng] placed procmod hooks..')
 
     def __del__(self):
         print('[ida_kernelcache_ng] plugmod destructor called!')
         if self.idp_hooks is not None:
             print('[ida_kernelcache_ng] unhooking procmod..')
-            self.idp_hooks.unhook()
+            # self.idp_hooks.unhook()
 
     def run(self, arg):
         print('[ida_kernelcache_ng] plugmod run called starting to process!!')

@@ -1,5 +1,3 @@
-import idc
-
 import ida_kernelcache.consts as consts
 import ida_kernelcache.symbols as symbols
 import ida_kernelcache.ida_helpers.names as names
@@ -54,3 +52,6 @@ class ApplyRTTIInfoPhase(BasePhase):
         vtable_symbol = symbols.vtable_symbol_for_class(classinfo.class_name)
         if not names.set_ea_name(classinfo.vtable_info.vtable_ea, vtable_symbol, rename=True):
             self.log.error(f'Failed to set name at {classinfo.vtable_info.vtable_ea:#x}! wanted {vtable_symbol}')
+
+    def _symbolicate_overrides_for_classinfo(self):
+        raise NotImplementedError()

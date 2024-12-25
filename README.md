@@ -27,10 +27,11 @@ under the MIT license. Other sources are noted in the comments in the correspond
 - [ ] Rename SetClassInfoSymbols phase to UseRTTIInfoPhase and improve it
   - [ ] Change the global instances type to OSMetaClass * type (requires to create this type a-prior)
   - [ ] Change the types of every vtable it the Class_vtbl type
+  - [ ] Set the this argument type for every vtable function
 - [X] Implement creation of C++ types (conforming to IDA 7.2 new C++ types), actually in IDA 9.0 the API has been improved 
   - [X] Implement detecting overridden functions and functions that are pure virtual
   - [X] Implement getting the PAC diversifier of every vtable entry
-  - [ ] Fix errors " does not seem to be a signed PAC pointer" 
+  - [ ] Fix errors "does not seem to be a signed PAC pointer" 
   - [ ] Implement fetching function names if they are already set
   - [ ] Implement fetching function signatures
 - [ ] Add CollectPACCallSites Phase (search for MOVKS followed by BLRAAs)
@@ -58,3 +59,4 @@ under the MIT license. Other sources are noted in the comments in the correspond
   - [ ] A feature I think is nice is to show class hierarchy in a Graph View
   - [ ] Another feature that could be nice is to show all the classes in a given kext
   - [ ] Fix the mangling issue when classnames contain '::'...
+- [ ] Add external method processing phase
