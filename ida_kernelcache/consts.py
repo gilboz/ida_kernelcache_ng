@@ -37,7 +37,7 @@ struct __cppobj {class_name}{superclass_name} {{
     {data_fields}
 }};'''
 
-# This syntax was added in IDA 9.0 and it does work but we don't have real control about the fields of the
+# This syntax was added in IDA 9.0 and it does work but we don't have real control about the fields of the vtable
 CLASS_DECL_TEMPLATE = '''\
 class {class_name}{superclass_name} {{
     virtual void this_offset();
@@ -45,3 +45,9 @@ class {class_name}{superclass_name} {{
     {virtual_funcs}
     {data_fields}
 }};'''
+
+# Related to ColorizeVtables
+BGCOLOR_RED = 0x00008B
+BGCOLOR_GREEN = 0x006400
+BGCOLOR_BLUE = 0x8B0000
+BGCOLOR_GRAY = 0x696969

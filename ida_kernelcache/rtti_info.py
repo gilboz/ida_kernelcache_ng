@@ -20,6 +20,7 @@ from ida_kernelcache.ida_helpers import generators
 
 log = logging.getLogger(__name__)
 
+
 class ClassInfo(object):
     """
     Python class to store C++ class information from KernelCache.
@@ -111,8 +112,10 @@ class VtableEntry:
     entry_ea: int
     vmethod_ea: int
     pac_diversifier: int
-    overrides: bool
-    pure_virtual: bool
+    inherited: bool  # This method was inherited from the superclass
+    overrides: bool  # This method overrides its super implementation
+    added: bool  # First time we are seeing this method in this inheritance chain
+    pure_virtual: bool  # This is a pure virtual method
 
 
 class VtableInfo:
@@ -122,16 +125,16 @@ class VtableInfo:
 
     CXA_PURE_VIRTUAL_EA: int = idc.BADADDR
 
-    def __init__(self, vtable_ea: int, vtable_end_ea: int, class_info: ClassInfo | None = None):
+    def __init__(self, vtable_ea: int, vtable_end_ea: int, has_sentinel: bool = False, class_info: ClassInfo | None = None):
         # Vtable EA is the offset 0 of the vtable (every vtable in the kernelcache starts with two nulls)
         self.vtable_ea = vtable_ea
         self.end_ea = vtable_end_ea
-
+        self.has_sentinel = has_sentinel
         self._cached_entries: list[VtableEntry] = []
         self._class_info = class_info
 
     def __len__(self):
-        return self.length
+        return self.total_length
 
     @property
     def class_info(self):
@@ -144,7 +147,7 @@ class VtableInfo:
         self._class_info = class_info
 
     @property
-    def length(self) -> int:
+    def total_length(self) -> int:
         """
         This property is the number of bytes for the whole vtable
         """
@@ -158,45 +161,18 @@ class VtableInfo:
         return self.vtable_ea + consts.VTABLE_FIRST_METHOD_OFFSET
 
     @property
-    def num_vmethods(self) -> int:
-        assert self.length % consts.WORD_SIZE == 0, f'Invalid vtable length {self.length} for {self.class_info.class_name}!'
-        return self.length // consts.WORD_SIZE
+    def actual_length(self) -> int:
+        """
+        This property is the number of bytes for the vmethods section only (excluding first 16 bytes of zeros)
+        """
+        return self.end_ea - self.start_ea
 
     @property
-    def entries(self) -> list[VtableEntry]:
+    def num_vmethods(self) -> int:
+        assert self.actual_length % consts.WORD_SIZE == 0, f'Invalid vtable length {self.actual_length} for {self.class_info.class_name}!'
+        return self.actual_length // consts.WORD_SIZE
 
-        # If we already calculated the entries we can return them
-        if self._cached_entries:
-            return self._cached_entries
-
-        # If this vtable belongs to a subclass of some other class we can determine which functions have been overridden
-        superclass_vtable_info = None
-        if self.class_info.is_subclass():
-            superclass_vtable_info = self.class_info.superclass.vtable_info
-
-        for index, vtable_entry_ea, vmethod_ea in self.vmethods():
-            pure_virtual = vmethod_ea == self.CXA_PURE_VIRTUAL_EA
-            signed_ptr = ida_bytes.get_original_qword(vtable_entry_ea)
-            if signed_ptr == vmethod_ea:
-                # raise PhaseException(f'vmethod at {vtable_entry_ea:#x} does not seem to be a signed PAC pointer')
-                log.error(f'vmethod at {vtable_entry_ea:#x} does not seem to be a signed PAC pointer')
-                pac_diversifier = -1
-            else:
-                pac_diversifier = utils.get_pac(signed_ptr)
-            overrides = False
-            if superclass_vtable_info and index < len(superclass_vtable_info.entries):
-                super_vtable_entry = superclass_vtable_info.entries[index]
-                overrides = super_vtable_entry.vmethod_ea != vmethod_ea
-
-            # Create a new vtable entry
-            vtable_entry = VtableEntry(index, vtable_entry_ea, vmethod_ea, pac_diversifier, overrides, pure_virtual)
-
-            # Store it in the cached entries
-            self._cached_entries.append(vtable_entry)
-
-        return self._cached_entries
-
-    def vmethods(self) -> (tuple[int, int], None, None):
+    def _vmethods(self) -> (tuple[int, int], None, None):
         """
         This generator yields all the vmethods in the vtable with their addresses
         tuple[index, vtable_entry_ea, vmethod_ea]
@@ -217,6 +193,43 @@ class VtableInfo:
         """
         for index, (vtable_entry_ea, vmethod_ea) in enumerate(generators.ReadWords(self.start_ea, self.end_ea, addresses=True)):
             yield index, vtable_entry_ea, vmethod_ea
+
+    @property
+    def entries(self) -> list[VtableEntry]:
+
+        # If we already calculated the entries we can return them
+        if self._cached_entries:
+            return self._cached_entries
+
+        # If this vtable belongs to a subclass of some other class we can determine which functions have been overridden
+        superclass_vtable_info = None
+        if self.class_info.is_subclass():
+            superclass_vtable_info = self.class_info.superclass.vtable_info
+
+        for index, vtable_entry_ea, vmethod_ea in self._vmethods():
+            pure_virtual = vmethod_ea == self.CXA_PURE_VIRTUAL_EA
+
+            signed_ptr = ida_bytes.get_original_qword(vtable_entry_ea)
+            if signed_ptr != vmethod_ea:
+                pac_diversifier = utils.get_pac(signed_ptr)
+            else:
+                log.error(f'vtable for {self.class_info.class_name:50s} has non-PACed entry {vtable_entry_ea:#x} {signed_ptr:#x}')
+                pac_diversifier = -1
+
+            inherited, overrides, added = False, False, True
+            if superclass_vtable_info and index < superclass_vtable_info.num_vmethods:
+                super_vtable_entry = superclass_vtable_info.entries[index]
+                inherited = super_vtable_entry.vmethod_ea == vmethod_ea
+                overrides = super_vtable_entry.vmethod_ea != vmethod_ea
+                added = False
+
+            # Create a new vtable entry
+            vtable_entry = VtableEntry(index, vtable_entry_ea, vmethod_ea, pac_diversifier, inherited, overrides, added, pure_virtual)
+
+            # Store it in the cached entries
+            self._cached_entries.append(vtable_entry)
+
+        return self._cached_entries
 
 
 class ClassInfoMap:

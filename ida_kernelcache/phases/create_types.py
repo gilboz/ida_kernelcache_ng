@@ -107,7 +107,7 @@ class CreateTypes(BasePhase):
                 # TODO: implement get_ea_name and
                 func_name = consts.FUNC_NAME_TEMPlATE.format(index=vtable_entry.index)
                 # TODO: Implement get function signatures
-                func_decls.append(consts.VIRTUAL_FUNC_TEMPLATE.format(func_name=func_name, func_sig='', vmethod_ea=vtable_entry.vmethod_ea))
+                func_decls.append(consts.VIRTUAL_FUNC_TEMPLATE.format(func_name=func_name, func_sig=f'{class_info.class_name} *__hidden this', vmethod_ea=vtable_entry.vmethod_ea))
 
             for offset in class_info.data_field_offsets():
                 field_decls.append(consts.DATA_FIELD_TEMPLATE.format(offset=offset))

@@ -8,10 +8,14 @@ build/
 # Mainly here for reference and my own convinience
 not_yet_refactored/
 
-tests/kernelcache*
+# Testing IDBs
+tests/*.i64
+tests/*.id*
+tests/*.nam
+tests/*.til
 
-# Not ready
+
+# In the oven
 tests/test_patches.py
 tests/patch_undecoded.py
-
-
+tests/dump_vtables.py

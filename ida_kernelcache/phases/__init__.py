@@ -5,5 +5,5 @@ from .collect_classes import CollectClasses
 from .collect_vtables import CollectVtables
 from .apply_rtti_info import ApplyRTTIInfoPhase
 from .create_types import CreateTypes
-
-ALL_PHASES = [CollectClasses, CollectVtables, ApplyRTTIInfoPhase, CreateTypes]
+from .colorize_vtables import ColorizeVtables
+ALL_PHASES = [CollectClasses, CollectVtables, CreateTypes, ApplyRTTIInfoPhase, ColorizeVtables]

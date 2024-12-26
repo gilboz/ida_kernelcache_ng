@@ -1,6 +1,8 @@
 import idapro
-
 import ida_kernelcache.kernelcache as kernelcache
+from ida_kernelcache.phases.collect_classes import CollectClasses
+from ida_kernelcache.phases.collect_vtables import CollectVtables
+from ida_kernelcache.phases import ColorizeVtables
 
 DB_PATH = r'./kernelcache_testing.i64'
 
@@ -13,14 +15,11 @@ def main():
         exit(1)
 
     kc = kernelcache.KernelCache()
-    try:
-        kc.process()
-    except Exception as e:
-        print(f'Failed early!')
-        raise
 
-    finally:
-        idapro.close_database(save=True)
+    phases = [CollectClasses, CollectVtables, ColorizeVtables]
+    kc.process(phases=phases)
+
+    idapro.close_database()
 
 
 if __name__ == '__main__':

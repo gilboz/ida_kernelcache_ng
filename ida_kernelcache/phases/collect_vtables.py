@@ -15,6 +15,7 @@ class CollectVtables(BasePhase):
     This phase depends on the CollectClasses phase and must run after it
     """
     GET_METACLASS_FUNC_SIZE = 16
+    SENTINEL_MASK = 0xffffffffffff0000
 
     def __init__(self, kc):
         super().__init__(kc)
@@ -122,6 +123,8 @@ class CollectVtables(BasePhase):
         return True
 
     def _collect_vtables_new(self):
+        num_with_sentinel = 0
+
         for metaclass_ea, getmetaclass_ea in self._metaclass_ea_to_getmetaclass_ea.items():
             class_info = self._kc.class_info_map[metaclass_ea]
 
@@ -142,9 +145,18 @@ class CollectVtables(BasePhase):
 
                 # Count the number of methods in this vtable to determine its length
                 num_vtable_methods = consts.INITIAL_NUM_VTABLE_METHODS
+                has_sentinel = False
+
                 for vmethod_ea in generators.ReadWords(candidates[0], idc.get_segm_end(vtable_ea)):
                     # Stop on the first NULL
                     if not vmethod_ea:
+                        break
+
+                    if vmethod_ea & self.SENTINEL_MASK == self.SENTINEL_MASK:
+                        # TODO: is this virtual inheritance? If so, how do we parse it?
+                        num_with_sentinel += 1
+                        self.log.debug(f'{vtable_ea:#x} vtable for {class_info.class_name:50s} Found sentinel! {vmethod_ea:#x}')
+                        has_sentinel = True
                         break
 
                     # If this happens this is probably because IDA auto-analysis failed to determine function boundaries correctly
@@ -157,13 +169,14 @@ class CollectVtables(BasePhase):
                 vtable_end_ea = vtable_ea + num_vtable_methods * consts.WORD_SIZE + consts.VTABLE_FIRST_METHOD_OFFSET
                 self.log.debug(f'Found vtable of {class_info.class_name} {vtable_ea:#x}-{vtable_end_ea:#x} num methods:{num_vtable_methods}')
 
-                vtable_info = rtti_info.VtableInfo(vtable_ea, vtable_end_ea)
+                vtable_info = rtti_info.VtableInfo(vtable_ea, vtable_end_ea, has_sentinel)
                 class_info.vtable_info = vtable_info
                 vtable_info.class_info = class_info
-
 
             elif len(candidates) > 1:
                 candidates_str = ', '.join(hex(x) for x in candidates)
                 self.log.warning(f'{class_info.class_name} {getmetaclass_ea:#x} has multiple vtable candidates {candidates_str}')
             else:
                 self.log.error(f'No potential vtable xref to {class_info.class_name}::getMetaClass found!')
+        if num_with_sentinel:
+            self.log.warning(f'{num_with_sentinel} classes are possibly subject to multiple inheritance, which we do not support yet!')
