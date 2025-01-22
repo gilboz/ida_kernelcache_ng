@@ -18,30 +18,25 @@ Much of the functionality in ida_kernelcache is borrowed from [memctl], which is
 under the MIT license. Other sources are noted in the comments in the corresponding files.
 
 ## TODO:
-- [X] Implement AddClassInfoSymbols phase
-- [X] Adapt to the new Plugin API 
-- [X] Add a test script to analyze the kernelcache using the new idalib (headless mode)
-- [X] Implement ColorizeVtables phase: set colors for vtable vmethods (which one overrides, which is new, which is inherited from super)
-  The drawback here is that in order to set a color for each vtable entry I cannot retype the to the corresponding structure
+- [X] Implement creation of C++ types (conforming to IDA 7.2 new C++ types), actually in IDA 9.0 the API has been improved 
+  - [ ] Apply information to _vtbl virtual function members, with the name and signature from symdb
+  - [ ] Change the first argument type of every vmethod to this pointer
+  - [ ] Integrate IPSW symbols propagation through vmethods
+  - [X] Implement detecting overridden functions and functions that are pure virtual
+  - [X] Implement getting the PAC diversifier of every vtable entry
+  - [X] Fix errors "does not seem to be a signed PAC pointer". UPDATE: seems like some objects are subject to multiple inheritance? In the past this was not supported by libkern++ 
+        according to Apple's documentation. There are these sentinels and non virtual thunks, weird. On a recent kernelcache there are 93 classes that contain a sentinel.
+- [ ] Add CollectPACCallSites Phase (search for MOVKS followed by BLRAAs)
+- [ ] Fix noret attribute of stack_chk_fail and panic, recreate functions
 - [ ] Get rid of old code! 
   - [X] Delete old and unused scripts!
-  - [ ] Remove all methods in ida_utilities.py and remove the module
+  - [X] Remove all methods in ida_utilities.py and remove the module
   - [ ] Replace and remove build_struct.py
   - [ ] the OneToOneMap not really needed anymore (add checks are raise PhaseException upon duplicates!) utils.py
 - [X] Rename SetClassInfoSymbols phase to UseRTTIInfoPhase and improve it
   - [ ] Change the global instances type to OSMetaClass * type (requires to create this type a-prior)
   - [X] Change the types of every vtable it the Class_vtbl type - *WON'T DO, will break ColorizeVtables*
   - [X] Set the this argument type for every vtable function
-- [X] Implement creation of C++ types (conforming to IDA 7.2 new C++ types), actually in IDA 9.0 the API has been improved 
-  - [X] Implement detecting overridden functions and functions that are pure virtual
-  - [X] Implement getting the PAC diversifier of every vtable entry
-  - [X] Fix errors "does not seem to be a signed PAC pointer". UPDATE: seems like some objects are subject to multiple inheritance? In the past this was not supported by libkern++ 
-        according to Apple's documentation. There are these sentinels and non virtual thunks, weird. On a recent kernelcache there are 93 classes that contain a sentinel.
-  - [ ] Implement fetching function names if they are already set
-  - [ ] Implement fetching function signatures
-- [ ] Add CollectPACCallSites Phase (search for MOVKS followed by BLRAAs)
-- [ ] Kernel fixups (auto analysis)
-  - [ ] stack_chk_fail and panic
 - [ ] Change return type of OSMetaClassBase::safeMetaCast calls according to the metaclass operand
 - [ ] Improve Data flow analysis
   - [ ] Reimplement equivalent of class_struct.py (_propagate_virtual_method_types_for_class, process_functions)
@@ -55,7 +50,6 @@ under the MIT license. Other sources are noted in the comments in the correspond
 - [ ] Modify the install.sh script so that it will create a symlink to this plugin source instead of placing a stub.
 - [X] Handle opcodes that IDA fails to decode. Currently done via a procmodule extension
 - [X] Add a test script that can be used to search for more undecoded bytes in code segments (ida_bytes.get_flags(ea)) after a binary has completed auto analysis (for development purposes..)
-- [ ] Resolve TODOs for edge cases in all of the phases
 - [ ] Improve plugin GUI
   - [ ] Fix the wait box for updating the current phase that is executing
   - [ ] Add a Widget to select the phases which the user may run
@@ -65,8 +59,20 @@ under the MIT license. Other sources are noted in the comments in the correspond
   - [ ] Add context-menu xrefs from and to vtables
 - [ ] Fix the mangling issue when classnames contain '::'...
 - [ ] Add external method processing phase
-- [ ] Add support for multiple inheritance in CollectVtables?
+- [ ] Add support for multiple inheritance in CollectVtables? XNU source example: IONVRAMCHRPHandler
 - [ ] Change types of IOMallocType invocations?
 - [ ] Generate TIL from the XNU sources, that will fit iOS compilations and load it into IDA.
   - [ ] CreateTypesPhase must align with it!
 - [ ] Load basic types from KDK DWARF information?
+- [ ] Customize bindiffing algorithms to work fast on the kernelcache
+- [X] Implement AddClassInfoSymbols phase
+- [X] Adapt to the new Plugin API 
+- [X] Add a test script to analyze the kernelcache using the new idalib (headless mode)
+- [X] Implement ColorizeVtables phase: set colors for vtable vmethods (which one overrides, which is new, which is inherited from super)
+  The drawback here is that in order to set a color for each vtable entry I cannot retype the to the corresponding structure
+## Improvements Needed
+- [ ] Resolve TODOs for edge cases in all of the phases
+
+Tracking issues
+1. 93 Classes are subject to multiple inheritance
+2. 70 Virtual methods that have wrong function boundaries

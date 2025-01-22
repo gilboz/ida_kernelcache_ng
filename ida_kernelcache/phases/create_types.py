@@ -1,5 +1,6 @@
 """
 Refer to: https://docs.hex-rays.com/user-guide/user-interface/menu-bar/view/c++-type-details
+This is why I set the EA as struct member comments: https://hex-rays.com/blog/igor-tip-of-the-week-15-comments-in-structures-and-enums
 """
 
 from collections import deque
@@ -11,14 +12,14 @@ import ida_xref
 import idautils
 import idc
 
-from ida_kernelcache import utils, consts, rtti_info
+from ida_kernelcache import utils, consts, rtti
 from ida_kernelcache.exceptions import PhaseException
 from ida_kernelcache.ida_helpers import strings, functions, names
 from ida_kernelcache.ida_helpers import types
 from .base_phase import BasePhase
 
 if TYPE_CHECKING:
-    from ida_kernelcache.rtti_info import ClassInfo
+    from ida_kernelcache.rtti import ClassInfo
 
 
 class CreateTypes(BasePhase):
@@ -31,8 +32,6 @@ class CreateTypes(BasePhase):
 
     In IDA a cpp structure has the TAUDT_CPPOBJ flag set in its udt_type_data_t object.
     Inheritance is achieved through a special member which is udm_t that is marked as baseclass at offset 0
-
-    TODO: implement jump to indirect call by adding a comment including the vfunc ea in struct members of _vtable structures
     """
     DEFAULT_OVERRIDE_CHOICE = 1
 
@@ -41,28 +40,8 @@ class CreateTypes(BasePhase):
 
     def run(self):
         # This check will raise an exception in case we cannot continue because there are conflicts
-        self._handle_pure_virtual()
         self._check_for_conflicts()
         self._create_types_bfs()
-
-    def _handle_pure_virtual(self):
-        str_ea = strings.find_str(consts.CXA_PURE_VIRTUAL).ea
-        candidate = ida_xref.get_first_dref_to(str_ea)
-        if candidate == idc.BADADDR:
-            raise PhaseException(f'Could not find {consts.CXA_PURE_VIRTUAL} string reference!')
-
-        if ida_xref.get_next_dref_to(str_ea, candidate) != idc.BADADDR:
-            raise PhaseException(f'{consts.CXA_PURE_VIRTUAL} string has more than 1 xref!')
-
-        cxa_pure_virtual_ea = functions.get_func_start(candidate)
-        self.log.info(f'Found {consts.CXA_PURE_VIRTUAL} at {cxa_pure_virtual_ea:#x}')
-        new_func_name = f'_{consts.CXA_PURE_VIRTUAL}'
-
-        if not names.set_ea_name(cxa_pure_virtual_ea, new_func_name):
-            self.log.error(f'Failed to change the function name at {cxa_pure_virtual_ea:#x} to {new_func_name}')
-
-        # Store this information in the VtableInfo class, this will be used when constructing the VtableEntry instances
-        rtti_info.VtableInfo.CXA_PURE_VIRTUAL_EA = cxa_pure_virtual_ea
 
     def _check_for_conflicts(self):
         num_conflicts = 0

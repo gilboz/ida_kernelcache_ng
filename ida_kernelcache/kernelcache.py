@@ -8,7 +8,7 @@ import ida_kernwin
 import idc
 import logging
 from ida_kernelcache import (
-    kplist, rtti_info, consts,
+    kplist, rtti, consts,
 )
 from ida_kernelcache.exceptions import PhaseException
 from ida_kernelcache.phases import ALL_PHASES
@@ -36,7 +36,10 @@ class KernelCache(object):
         self._prelink_info = None
 
         # TODO: make this persistent?
-        self.class_info_map = rtti_info.ClassInfoMap()
+        self.rtti_db = rtti.RTTIDatabase()
+        self.rtti_db.load()
+        self.class_info_map = self.rtti_db.class_info_map
+        self.vmethod_info_map = self.rtti_db.vmethod_info_map
 
         self.segments_list: list[Segment] = []
 
@@ -141,7 +144,7 @@ class KernelCache(object):
         # Run all phases
         for i, phase_cls in enumerate(phases):
             ida_kernwin.replace_wait_box(f'Processing phase: {phase_cls.__name__} step:{i}/{len(phases)}')
-            log.info(f'***** Starting phase: {phase_cls.__name__} *****')
+            log.info(f'************************************* Starting phase: {phase_cls.__name__} *************************************')
             phase = phase_cls(self)
 
             try:
@@ -155,7 +158,7 @@ class KernelCache(object):
                 log.exception(ex)
                 break
             else:
-                log.info(f'***** Finished phase: {phase_cls.__name__} *****')
+                log.info(f'************************************* Finished phase: {phase_cls.__name__} *************************************')
 
             # Wait for auto analysis to complete after every phase.
             # Honestly I'm not sure if this is needed but the auto analyzer is IDLE it will return immediately

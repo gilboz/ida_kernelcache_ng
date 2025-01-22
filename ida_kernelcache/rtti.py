@@ -1,22 +1,29 @@
 """
-ida_kernelcache/rtti_info.py
+ida_kernelcache/rtti.py
 Author: Brandon Azad, gilboz
 
 This module defines the ClassInfo, VtableInfo and ClassInfoMap classes.
-These classes are responsible for sotring information about a C++ RTTI information in the kernelcache.
+These classes are responsible for storing information about a C++ RTTI information in the kernelcache.
 
 The ClassInfoMap is meant to hold all of this information in an easy to use and fast data structure.
 It uses both metaclass_ea and classname as indexes to the ClassInfo instances that are created in the CollectClasses phase
 """
+import enum
+import json
 import logging
 import dataclasses
+import pathlib
+from collections import deque
+from typing import Generator
 
 import ida_bytes
+import ida_funcs
+import ida_nalt
 import idc
 
 from ida_kernelcache import consts, utils
 from ida_kernelcache.exceptions import ClassHasVtableError, VtableHasClassError, PhaseException
-from ida_kernelcache.ida_helpers import generators
+from ida_kernelcache.ida_helpers import generators, functions
 
 log = logging.getLogger(__name__)
 
@@ -30,10 +37,18 @@ class ClassInfo(object):
         self.class_name = class_name
         self.metaclass_ea = metaclass
         self.class_size = class_size
-
         self.superclass: 'ClassInfo | None' = superclass
         self._vtable_info: 'VtableInfo | None' = None
         self.subclasses = set()
+
+    def serialize(self) -> dict:
+        return {
+            'class_name': self.class_name,
+            'metaclass_ea': self.metaclass_ea,
+            'class_size': self.class_size,
+            'super_metaclass_ea': self.superclass.metaclass_ea if self.superclass else None,
+            'vtable_info': self.vtable_info.serialize() if self.vtable_info else None,
+        }
 
     def __repr__(self):
         return f'<ClassInfo {self.class_name}, size:{self.class_size}, metaclass:{self.metaclass_ea:#x}>'
@@ -106,16 +121,66 @@ class ClassInfo(object):
                 yield descendant
 
 
+class SymbolSource(enum.IntEnum):
+    NO_SYMBOL = 0
+    PAC_DB = enum.auto()
+    IPSW_DB = enum.auto()
+    IPSW_PROPAGATION = enum.auto()
+
+
+@dataclasses.dataclass
+class VMethodInfo:
+    vmethod_ea: int
+    vtable_entries: list['VtableEntry'] = dataclasses.field(default_factory=list, repr=False)  # The relationship between vmethod and vtable entries is one-to-many
+    mangled_symbol: str | None = None  # A mangled symbol if known, None otherwise
+    symbol_source: SymbolSource = SymbolSource.NO_SYMBOL  # An enumeration type specifying the symbol source if this vmethod has one
+    func: ida_funcs.func_t | None = dataclasses.field(init=False)  # Easy access to IDA function structure. None if the vmethod_ea is not the function start address
+
+    def __post_init__(self):
+        if functions.is_function_start(self.vmethod_ea):
+            self.func = ida_funcs.get_func(self.vmethod_ea)
+        else:
+            self.func = None
+
+    def __hash__(self):
+        return hash(self.vmethod_ea)
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.vmethod_ea == other.vmethod_ea
+
+    def __repr__(self) -> str:
+        return f'VMethodInfo(vmethod_ea={self.vmethod_ea:#x}, mangled_symbol={self.mangled_symbol}, symbol_source={self.symbol_source}, valid={self.func is not None}, vtable_entries={len(self.vtable_entries)})'
+
+
 @dataclasses.dataclass
 class VtableEntry:
-    index: int
-    entry_ea: int
-    vmethod_ea: int
-    pac_diversifier: int
+    index: int  # The index of the vtable entry in the current vtable
+    entry_ea: int  # Address of the entry in the virtual table
+    vmethod_ea: int  # Address of the virtual method that the vtable entry points to
     inherited: bool  # This method was inherited from the superclass
     overrides: bool  # This method overrides its super implementation
     added: bool  # First time we are seeing this method in this inheritance chain
     pure_virtual: bool  # This is a pure virtual method
+    vmethod_info: VMethodInfo | None = dataclasses.field(default=None)
+    pac_diversifier: int = dataclasses.field(init=False)  # The pac diversifier of the current vtable entry
+
+    def __post_init__(self):
+        signed_ptr = ida_bytes.get_original_qword(self.entry_ea)
+        if signed_ptr != self.vmethod_ea:
+            self.pac_diversifier = utils.get_pac(signed_ptr)
+        else:
+            log.error(f'vtable entry at {self.entry_ea:#x} has contains a non-PACed vmethod ptr {signed_ptr:#x}')
+            self.pac_diversifier = -1
+
+    def __hash__(self):
+        return hash(self.entry_ea)
+
+    def __eq__(self, other):
+        return self.entry_ea == other.entry_ea
+
+    def __repr__(self) -> str:
+        has_symbol = int(bool(self.vmethod_info and self.vmethod_info.mangled_symbol))
+        return f'VtableEntry(index={self.index}, entry_ea={self.entry_ea:#x}, pac_diversifier={self.pac_diversifier:#x}, o={int(self.overrides)}, i={int(self.inherited)}, pv={int(self.pure_virtual)}, a={int(self.added)}, symbolicated={has_symbol})'
 
 
 class VtableInfo:
@@ -133,11 +198,18 @@ class VtableInfo:
         self._cached_entries: list[VtableEntry] = []
         self._class_info = class_info
 
+    def serialize(self) -> dict:
+        return {
+            'vtable_ea': self.vtable_ea,
+            'end_ea': self.end_ea,
+            'has_sentinel': self.has_sentinel
+        }
+
     def __len__(self):
         return self.total_length
 
     @property
-    def class_info(self):
+    def class_info(self) -> ClassInfo | None:
         return self._class_info
 
     @class_info.setter
@@ -196,7 +268,7 @@ class VtableInfo:
 
     @property
     def entries(self) -> list[VtableEntry]:
-
+        assert self.CXA_PURE_VIRTUAL_EA != idc.BADADDR, 'Forgot to initialize the __cxa_pure_virtual ea!'
         # If we already calculated the entries we can return them
         if self._cached_entries:
             return self._cached_entries
@@ -209,13 +281,6 @@ class VtableInfo:
         for index, vtable_entry_ea, vmethod_ea in self._vmethods():
             pure_virtual = vmethod_ea == self.CXA_PURE_VIRTUAL_EA
 
-            signed_ptr = ida_bytes.get_original_qword(vtable_entry_ea)
-            if signed_ptr != vmethod_ea:
-                pac_diversifier = utils.get_pac(signed_ptr)
-            else:
-                log.error(f'vtable for {self.class_info.class_name:50s} has non-PACed entry {vtable_entry_ea:#x} {signed_ptr:#x}')
-                pac_diversifier = -1
-
             inherited, overrides, added = False, False, True
             if superclass_vtable_info and index < superclass_vtable_info.num_vmethods:
                 super_vtable_entry = superclass_vtable_info.entries[index]
@@ -224,12 +289,43 @@ class VtableInfo:
                 added = False
 
             # Create a new vtable entry
-            vtable_entry = VtableEntry(index, vtable_entry_ea, vmethod_ea, pac_diversifier, inherited, overrides, added, pure_virtual)
+            vtable_entry = VtableEntry(index, vtable_entry_ea, vmethod_ea, inherited, overrides, added, pure_virtual)
 
             # Store it in the cached entries
             self._cached_entries.append(vtable_entry)
 
         return self._cached_entries
+
+    def related_entries(self, vtable_entry: VtableEntry) -> Generator[tuple[ClassInfo, VtableEntry], None, None]:
+        """
+        Generator that returns "related" VtableEntries. That is vtable entries of ancestors or descendants with the
+        same vtable index. First it will traverse up the inheritance tree and then down
+        """
+        assert vtable_entry.index <= self.num_vmethods, 'Invalid vtable entry!'
+        assert vtable_entry.overrides or vtable_entry.added, 'Invalid vtable entry type!'
+
+        # Traversing upwards only makes sense when the vtable entry overrides
+        if vtable_entry.overrides:
+            for class_info in self._class_info.ancestors(inclusive=False):
+                # Classes close to the root of the inheritance tree might not have this vtable entry
+                if vtable_entry.index >= class_info.vtable_info.num_vmethods:
+                    continue
+
+                super_vtable_entry = class_info.vtable_info.entries[vtable_entry.index]
+
+                yield class_info, super_vtable_entry
+
+        # Traversing downwards we may find both vtable entries that inherit or overrides this vtable entry
+        # We are interested in
+        for class_info in self.class_info.descendants(inclusive=False):
+
+            # There are very little classes that have subclasses without vtable information we should handle them
+            if class_info.vtable_info is None:
+                continue
+
+            sub_vtable_entry = class_info.vtable_info.entries[vtable_entry.index]
+            if sub_vtable_entry.overrides:
+                yield class_info, sub_vtable_entry
 
 
 class ClassInfoMap:
@@ -300,7 +396,7 @@ class ClassInfoMap:
 
         self[(new_class_info.metaclass_ea, new_class_info.class_name)] = new_class_info
 
-    def items_by_type(self, key_type: type):
+    def items_by_type(self, key_type: type) -> (tuple[str | int, ClassInfo], None, None):
         d = self._get_dict_from_type(key_type)
         return d.items()
 
@@ -317,3 +413,142 @@ class ClassInfoMap:
     def values(self):
         # It shouldn't matter which internal dictionary we use here
         return self.metaclass_ea_to_class_info.values()
+
+    def bfs(self, must_have_vtable: bool = True) -> Generator[ClassInfo, None, None]:
+        queue: deque[ClassInfo] = deque((ci for ci in self.values() if ci.superclass is None))
+        while queue:
+            class_info = queue.popleft()
+
+            # Skip classes without vtable information
+            if must_have_vtable and class_info.vtable_info is None:
+                continue
+
+            yield class_info
+
+            # Add the next level of classes to the end of the deque
+            for subclass in class_info.subclasses:
+                queue.append(subclass)
+
+
+class VMethodInfoMap:
+    """
+    A data storage class to maintain a global unique instance for every vmethod.
+    The vmethods are indexed by the vmethod_ea which is unique and therefore may be used as a primary key.
+    """
+
+    def __init__(self):
+        self._vmethods: dict[int, VMethodInfo] = {}
+
+    def clear(self):
+        self._vmethods.clear()
+
+    def _create_vmethod_info(self, vmethod_ea: int) -> None:
+        assert vmethod_ea not in self._vmethods, 'vmethod already exists in the map!'
+        vmethod_info = VMethodInfo(vmethod_ea, [], None, SymbolSource.NO_SYMBOL)
+        self._vmethods[vmethod_ea] = vmethod_info
+
+    def get_vmethod(self, vmethod_ea: int, create: bool = True) -> VMethodInfo:
+        """
+        Get an existing VMethodInfo instance by the vmethod_ea. Will create a new one if it doesn't already exist if the `create` parameter is set to True.
+        """
+        if vmethod_ea not in self._vmethods and create:
+            self._create_vmethod_info(vmethod_ea)
+        return self._vmethods[vmethod_ea]
+
+    def add_relation(self, vtable_entry: VtableEntry, create: bool = True) -> None:
+        assert vtable_entry.vmethod_info is None, 'VtableEntry already has a VMethodInfo instance!'
+        vmethod_info = self.get_vmethod(vtable_entry.vmethod_ea, create)
+        vmethod_info.vtable_entries.append(vtable_entry)
+        vtable_entry.vmethod_info = vmethod_info
+
+    def __len__(self) -> int:
+        return len(self._vmethods)
+
+    def items(self):
+        return self._vmethods.items()
+
+    def keys(self):
+        return self._vmethods.keys()
+
+    def values(self):
+        return self._vmethods.values()
+
+    @property
+    def num_symbolicated(self):
+        """
+        Returns the number of symbolicated vmethods
+        """
+        num = 0
+        for vmethod_info in self._vmethods.values():
+            if vmethod_info.mangled_symbol:
+                num += 1
+        return num
+
+
+class RTTIDatabase:
+    RTTI_DB_SUFFIX = '.rtti_db.json'
+
+    def __init__(self):
+        self.class_info_map = ClassInfoMap()
+        self.vmethod_info_map = VMethodInfoMap()
+        self.persistent_path = pathlib.Path(ida_nalt.get_input_file_path() + self.RTTI_DB_SUFFIX)
+
+    def save(self):
+        class_dicts = []
+        for class_info in self.class_info_map.values():
+            class_dicts.append(class_info.serialize())
+
+        offsets = {
+            'cxa_pure_virtual_ea': VtableInfo.CXA_PURE_VIRTUAL_EA
+        }
+
+        with self.persistent_path.open('w') as f:
+            json.dump({'classes': class_dicts, 'offsets': offsets}, f)
+            log.info(f'RTTI Database saved to {self.persistent_path}')
+
+    def load(self):
+        if not self.persistent_path.exists():
+            return
+
+        log.info('RTTI Database loading..')
+        with self.persistent_path.open('r') as f:
+            try:
+                d = json.load(f)
+            except json.JSONDecodeError:
+                log.error(f'RTTI Database at {self.persistent_path} is not a valid JSON!')
+                return
+        try:
+            # Restore the cxa_pure_virtual address, which will be used to determine if a vtable entry is pure virtual
+            VtableInfo.CXA_PURE_VIRTUAL_EA = d['offsets']['cxa_pure_virtual_ea']
+
+            # Load class info
+            for class_dict in d['classes']:
+                new_class_info = ClassInfo(class_dict['class_name'], class_dict['metaclass_ea'], class_dict['class_size'])
+                self.class_info_map.add_classinfo(new_class_info)
+
+            # Reconstruct inheritance tree
+            for class_dict in d['classes']:
+                super_metaclass_ea = class_dict['super_metaclass_ea']
+                if super_metaclass_ea:
+                    class_info = self.class_info_map[class_dict['metaclass_ea']]
+                    superclass_info = self.class_info_map[super_metaclass_ea]
+                    class_info.superclass = superclass_info
+                    superclass_info.subclasses.add(class_info)
+
+            # Load vtable info
+            for class_dict in d['classes']:
+                class_info = self.class_info_map[class_dict['metaclass_ea']]
+                vtable_dict = class_dict['vtable_info']
+                if vtable_dict:
+                    new_vtable_info = VtableInfo(vtable_dict['vtable_ea'], vtable_dict['end_ea'], vtable_dict['has_sentinel'])
+                    class_info.vtable_info = new_vtable_info
+                    new_vtable_info.class_info = class_info
+
+                    for vtable_entry in new_vtable_info.entries:
+                        self.vmethod_info_map.add_relation(vtable_entry)
+        except KeyError:
+            log.error(f'RTTI Database at {self.persistent_path} has an invalid format!')
+            self.class_info_map.clear()
+            self.vmethod_info_map.clear()
+        else:
+            log.info(f'RTTI Database restored: {len(self.class_info_map)} classes loaded')

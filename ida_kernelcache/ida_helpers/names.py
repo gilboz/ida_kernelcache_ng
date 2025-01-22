@@ -1,3 +1,4 @@
+import idaapi
 import idc
 import ida_bytes
 import ida_name
@@ -76,3 +77,7 @@ def set_ea_name(ea, name, rename=False, auto=False):
     if auto:
         flags |= idc.SN_AUTO
     return bool(idc.set_name(ea, name, flags))
+
+
+def demangle(mangled_symbol: str) -> str:
+    return ida_name.demangle_name(mangled_symbol, idaapi.INF_SHORT_DEMNAMES, ida_name.DQT_FULL)

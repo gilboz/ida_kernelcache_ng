@@ -91,11 +91,8 @@ enum ctype_t
   cit_end
 };
 """
-import logging
 import ida_hexrays
 import idc
-
-from . import read_ptr
 
 
 class FindCallByArgVisitor(ida_hexrays.ctree_visitor_t):

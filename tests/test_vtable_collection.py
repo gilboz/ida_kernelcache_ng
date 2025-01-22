@@ -1,10 +1,8 @@
 import idapro
+
 import ida_kernelcache.kernelcache as kernelcache
 from ida_kernelcache.phases.collect_classes import CollectClasses
 from ida_kernelcache.phases.collect_vtables import CollectVtables
-import json
-import pickle
-import os
 
 DB_PATH = r'./kernelcache_testing.i64'
 
@@ -17,10 +15,9 @@ def main():
         exit(1)
 
     kc = kernelcache.KernelCache()
-
     phases = [CollectClasses, CollectVtables]
     kc.process(phases=phases)
-
+    print(f'There are a total of {len(kc.vmethod_info_map._vmethods)} vmethods globally!')
     idapro.close_database()
 
 

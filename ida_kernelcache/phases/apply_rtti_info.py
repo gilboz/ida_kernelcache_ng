@@ -1,3 +1,7 @@
+import ida_hexrays
+import ida_xref
+import idc
+
 import ida_kernelcache.consts as consts
 import ida_kernelcache.symbols as symbols
 import ida_kernelcache.ida_helpers.names as names
@@ -5,8 +9,11 @@ from .base_phase import BasePhase
 
 from typing import TYPE_CHECKING
 
+from ..exceptions import PhaseException
+from ..ida_helpers import strings, functions, decompiler
+
 if TYPE_CHECKING:
-    from ida_kernelcache.rtti_info import ClassInfo
+    from ida_kernelcache.rtti import ClassInfo
 
 
 class ApplyRTTIInfoPhase(BasePhase):
@@ -18,6 +25,7 @@ class ApplyRTTIInfoPhase(BasePhase):
     - Search through the kernelcache for OSMetaClass instances and add a symbol for each known instance
     - Populate IDA with virtual method table symbols
     """
+    DYNAMIC_CAST_PANIC = '\"OSDynamicCast(AGXAccelerator, driverService)\" @%s:%d'
 
     def __init__(self, kc):
         super().__init__(kc)
@@ -35,6 +43,29 @@ class ApplyRTTIInfoPhase(BasePhase):
                 self._add_vtable_symbol(classinfo)
             else:
                 self.log.debug(f'Skipping vtable symbol for {classname} because we dont have the corresponding vtable ea!')
+
+    def _find_safemetacast(self):
+        """
+        We must first find the EA for OSMetaClass::safeMetaCast
+        TODO: finish implementing this!
+        """
+        panic_str_ea = strings.find_str(self.DYNAMIC_CAST_PANIC).ea
+        xref_ea = ida_xref.get_first_cref_to(panic_str_ea)
+        if xref_ea == idc.BADADDR:
+            raise PhaseException(f'No xref found for {panic_str_ea:#x}')
+
+        if ida_xref.get_next_cref_to(panic_str_ea, xref_ea) != idc.BADADDR:
+            raise PhaseException(f'More than 1 xref to {panic_str_ea:#x}')
+
+        func_start = functions.get_func_start(xref_ea, raise_error=True)
+        cfunc = ida_hexrays.decompile(func_start)
+        if cfunc is None:
+            raise PhaseException(f'Failed decompilation of {func_start:#x}')
+
+        visitor = decompiler.FindCallByArgVisitor(panic_str_ea)
+        visitor.apply_to(cfunc.body, None)
+        if not visitor.found:
+            raise PhaseException("Failed to find panic call!")
 
     def _add_metaclass_instance_symbol(self, classinfo: 'ClassInfo') -> None:
         """
@@ -54,4 +85,5 @@ class ApplyRTTIInfoPhase(BasePhase):
             self.log.error(f'Failed to set name at {classinfo.vtable_info.vtable_ea:#x}! wanted {vtable_symbol}')
 
     def _symbolicate_overrides_for_classinfo(self):
+        # TODO: implement this?
         raise NotImplementedError()

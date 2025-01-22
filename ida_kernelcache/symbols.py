@@ -230,3 +230,18 @@ def metaclass_symbol_for_class(classname: str) -> str:
     if mangled is None:
         raise PhaseException(f'Failed to mangle classname!')
     return f'__Z{mangled}'
+
+
+NESTED_NAME_PATTERN = re.compile(r'__ZN([rVK]?[RO]?)(\d+)(.+)', flags=re.IGNORECASE)
+
+
+def sub_classname(mangled_symbol: str, new_class_name: str) -> str:
+    mo = NESTED_NAME_PATTERN.match(mangled_symbol)
+    if mo is None:
+        raise PhaseException(f'{mangled_symbol} does not match pattern..')
+    scope_len = int(mo.group(2))
+    return f'__ZN{mo.group(1)}{len(new_class_name)}{new_class_name}{mo.group(3)[scope_len:]}'
+
+
+def mangled_name_to_sig():
+    pass

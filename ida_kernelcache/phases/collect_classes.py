@@ -13,7 +13,7 @@ import ida_xref
 import ida_hexrays
 
 from .base_phase import BasePhase
-from ida_kernelcache import rtti_info, symbols
+from ida_kernelcache import rtti, symbols
 from ida_kernelcache.exceptions import PhaseException
 from ida_kernelcache.utils import OneToOneMapFactory
 
@@ -261,9 +261,9 @@ class CollectClasses(BasePhase):
 
         # Start one iteration by creating every ClassInfo instance for every discovered class
         for metaclass_ea, class_name in one_to_one_map.items():
-            class_info = rtti_info.ClassInfo(class_name,
-                                            metaclass_ea,
-                                            self._metaclass_to_class_size[metaclass_ea])
+            class_info = rtti.ClassInfo(class_name,
+                                        metaclass_ea,
+                                        self._metaclass_to_class_size[metaclass_ea])
 
             self._kc.class_info_map.add_classinfo(class_info)
         self.log.info(f'Added {len(self._kc.class_info_map)} to the ClassInfo list')
