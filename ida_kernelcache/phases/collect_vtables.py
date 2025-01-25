@@ -6,7 +6,7 @@ import idautils
 import idc
 
 from ida_kernelcache import consts, rtti
-from ida_kernelcache.exceptions import PhaseException
+from ida_kernelcache.exceptions import PhaseException, NewEdgeCaseError
 from ida_kernelcache.ida_helpers import decompiler, generators, functions, names, strings
 from .base_phase import BasePhase
 
@@ -29,18 +29,16 @@ class CollectVtables(BasePhase):
         self.X0_REGISTER_INDEX = idautils.GetRegisterList().index('X0')
 
     def run(self):
-
-        # TODO: implement Phase Dependencies?
         if not self._kc.class_info_map:
-            raise PhaseException(f"There are no entries in the KernelCache.classes dictionary.. consider running "
-                                 f"CollectClasses phase before {self.__class__}")
+            raise PhaseException(f"There are no entries in the KernelCache.classes dictionary.. consider running CollectClasses phase before {self.__class__}")
 
         self._handle_pure_virtual()
         self._collect_getmetaclass_methods()
         self._collect_vtables_new()
 
         for vmethod_ea in self._not_functions_set:
-            self.log.warning(f'The function boundaries of the vmethod at {vmethod_ea:#x} are wrong and I could not fix it automatically!')
+            # TODO: resolve this!
+            self.log.debug(f'The function boundaries of the vmethod at {vmethod_ea:#x} are wrong and I could not fix it automatically!')
         self.log.warning(f'There are {len(self._not_functions_set)} virtual methods with wrong function boundaries')
 
     def _handle_pure_virtual(self):
@@ -63,11 +61,13 @@ class CollectVtables(BasePhase):
         rtti.VtableInfo.CXA_PURE_VIRTUAL_EA = cxa_pure_virtual_ea
 
     def _collect_getmetaclass_methods(self) -> None:
+        """
+        We go over all the classes that we found so far, and search their corresponding ::getMetaClass() method
+        """
         num_fallback_findings = 0
-        num_multiple = 0
         self.log.info('Searching for ::getMetaClass methods..')
 
-        for metaclass_ea, info in self._kc.class_info_map.items_by_type(key_type=int):
+        for metaclass_ea, class_info in self._kc.class_info_map.items_by_type(key_type=int):
             candidates = set()
             for xref_ea in idautils.DataRefsTo(metaclass_ea):
                 xref_func = idaapi.get_func(xref_ea)
@@ -90,10 +90,9 @@ class CollectVtables(BasePhase):
 
             if len(candidates) == 1:
                 self._metaclass_ea_to_getmetaclass_ea[metaclass_ea] = candidates.pop()
-                self.log.debug(f'Found {info.class_name}::getMetaClass at {self._metaclass_ea_to_getmetaclass_ea[metaclass_ea]:#x} metaclass_ea {metaclass_ea:#x}')
+                self.log.debug(f'Found {class_info.class_name}::getMetaClass at {self._metaclass_ea_to_getmetaclass_ea[metaclass_ea]:#x} metaclass_ea {metaclass_ea:#x}')
             elif len(candidates) > 1:
-                self.log.error(f'Found multiple candidates for {info.class_name}::getMetaClass! {", ".join(f"{x:#x}" for x in candidates)}')
-                num_multiple += 1
+                raise PhaseException(f'Found multiple candidates for {class_info.class_name}::getMetaClass! {", ".join(f"{x:#x}" for x in candidates)}')
             else:
                 self._not_found_set.add(metaclass_ea)
 
@@ -101,13 +100,18 @@ class CollectVtables(BasePhase):
         # I'm not sure when the compiler decides not to yield vtables in the binary,
         # I guess this is some sort of optimization where an intermediate class (in the inheritance tree) does not override and method.
         for metaclass_ea in self._not_found_set:
-            # TODO: check if all of the references to this metaclass_ea is in __mod_init or __mod_term. Don't print and error if this is the case
-            info = self._kc.class_info_map[metaclass_ea]
-            self.log.warning(f'Failed to find {info.class_name}::getMetaClass! metaclass_ea {metaclass_ea:#x}')
+            class_info = self._kc.class_info_map[metaclass_ea]
+
+            # TODO: Probably a better check is to see if all of the references to this metaclass_ea is in __mod_init or __mod_term.
+            if class_info.is_middleclass():
+                class_info.optimized = True
+                self.log.info(f'Marked {class_info.class_name} metaclass_ea:{metaclass_ea:#x} as optimized without a vtable')
+            else:
+                raise PhaseException(f'Failed to find {class_info.class_name}::getMetaClass! metaclass_ea {metaclass_ea:#x}')
 
         # Log statistics to the user
         self.log.info(f'Found {len(self._metaclass_ea_to_getmetaclass_ea)}/{len(self._kc.class_info_map)}! '
-                      f'fallback: {num_fallback_findings} not found: {len(self._not_found_set)} multiple: {num_multiple}')
+                      f'fallback: {num_fallback_findings} not found: {len(self._not_found_set)}')
 
     def _is_getmetaclass_method(self, xref_ea: int, metaclass_ea: int) -> bool:
         cfunc = ida_hexrays.decompile(xref_ea)
@@ -123,6 +127,9 @@ class CollectVtables(BasePhase):
 
     def _is_getmetaclass_method_fallback(self, potential_func_start: int, metaclass_ea: int) -> bool:
         """
+        In practice the fallback is only used when IDA auto-analysis fails, which happens from time to time when Apple release kernelcaches
+        that contain new instructions that are not yet supported by the ARM64 disassembler in IDA.
+
         Every ::getMetaClass method should look the following set of instructions
         BTI c
         ADRL X0, metaclass_ea
@@ -150,23 +157,31 @@ class CollectVtables(BasePhase):
         return True
 
     def _collect_vtables_new(self):
+        """
+        To collect the vtables we iterate of the ClassInfo objects top down using BFS.
+        Every ::getMetaClass() method should have a single data reference in a const segment
+        """
         num_with_sentinel = 0
 
-        for metaclass_ea, getmetaclass_ea in self._metaclass_ea_to_getmetaclass_ea.items():
-            class_info = self._kc.class_info_map[metaclass_ea]
+        for class_info in self._kc.class_info_map.bfs(must_have_vtable=False):
+
+            # Skip optimized classes that have no vtable
+            if class_info.optimized:
+                continue
 
             if class_info.class_name == 'OSMetaClass':
                 # TODO: OSMetaClass::getMetaClass is referenced in all of the other MetaClasses
                 self.log.warning('Currently not collecting *::MetaClass vtables (needs to be implemented)')
                 continue
 
+            getmetaclass_ea = self._metaclass_ea_to_getmetaclass_ea[class_info.metaclass_ea]
             candidates = list(generators.DataRefsToWithSegmentFilter(getmetaclass_ea, r'.*__const$'))
 
             # Look for the vtable that references this method!
             if len(candidates) == 1:
                 vtable_ea = candidates[0] - consts.VTABLE_GETMETACLASS_OFFSET
                 if vtable_ea in self._associated_vtables:
-                    self.log.warning(f'Vtable {vtable_ea:#x} is already associated with some other class!')
+                    raise PhaseException(f'Vtable {vtable_ea:#x} is already associated with some other class!')
                 else:
                     self._associated_vtables.add(vtable_ea)
 
@@ -214,11 +229,16 @@ class CollectVtables(BasePhase):
                 # Modifying the VMethodsInfo map from that context would require passing a reference to the RTTIDatabase or storing it as global which both are a worse design in my opinion.
                 for vtable_entry in vtable_info.entries:
                     self._kc.vmethod_info_map.add_relation(vtable_entry)
-
             elif len(candidates) > 1:
-                candidates_str = ', '.join(hex(x) for x in candidates)
-                self.log.warning(f'{class_info.class_name} {getmetaclass_ea:#x} has multiple vtable candidates {candidates_str}')
+                # TODO: understand why AppleBasebandPCIMessageQueueBase behaves this way and remove it from the blacklist
+                # This currently only happens for one class: AppleBasebandPCIMessageQueueBase
+                # Its behaviour is very different from all the other classes in the kernelcache because it seems like there are really 4 different vtable types in the kernelcache
+                if class_info.class_name != 'AppleBasebandPCIMessageQueueBase':
+                    candidates_str = ', '.join(hex(x) for x in candidates)
+                    self.log.warning(f'{class_info.class_name} {getmetaclass_ea:#x} has multiple vtable candidates {candidates_str}')
+                    raise NewEdgeCaseError(f'{class_info.class_name} new edge-case discovered')
             else:
-                self.log.error(f'No potential vtable xref to {class_info.class_name}::getMetaClass found!')
+                raise PhaseException(f'No potential vtable xref to {class_info.class_name}::getMetaClass found!')
+
         if num_with_sentinel:
             self.log.warning(f'{num_with_sentinel} classes are possibly subject to multiple inheritance, which we do not support yet!')

@@ -43,6 +43,8 @@ class CollectClasses(BasePhase):
     Only top-level classes are processed. Information about nested classes is not collected.
     """
     NUM_EXPECTED_ARGS = 4
+    CLASS_BLACKLIST = ['AppleBasebandPCIMessageQueueBase']
+    TEMPLATE_BLACKLIST = ['OSValueObject']  # TODO: handling templates in name mangling has to be done first
 
     def __init__(self, kc):
         super().__init__(kc)
@@ -54,6 +56,7 @@ class CollectClasses(BasePhase):
         self._metaclass_to_class_size = {}
         self._metaclass_to_super_metaclass = {}
         self._visited: set[int] = set()
+        self._blacklisted: set[str] = set()
         self._var_expr_errors = collections.defaultdict(set)
 
         # Statistics
@@ -72,6 +75,10 @@ class CollectClasses(BasePhase):
         self._populate_class_info_map()
 
         for classname_str, errors_ea_set in self._var_expr_errors.items():
+            # Don't print errors for classes who we blacklisted
+            if classname_str in self._blacklisted:
+                continue
+
             if classname_str in self._kc.class_info_map:
                 # Don't consider those as failures in the statistics because we got the class info from somewhere else
                 self._num_failed -= len(errors_ea_set)
@@ -83,10 +90,12 @@ class CollectClasses(BasePhase):
         # Print statistics
         self.log.info(f'Collection stats:\n'
                       f'* total:{self._num_xrefs} xrefs in {len(self._visited)} unique functions\n'
-                      f'* succeeded:{self._num_succeeded}\n'
+                      f'* succeeded:{self._num_succeeded} xrefs\n'
                       f'* failed:{self._num_failed} xrefs, a total of {self._num_unique_unresolved} unresolved classes\n'
                       f'* duplicates:{self._num_duplicates}\n'
-                      f'* dropped in one-to-one map:{self._num_dropped_in_one_to_one_map}\n')
+                      f'* dropped in one-to-one map:{self._num_dropped_in_one_to_one_map}\n'
+                      f'* blacklisted:{len(self._blacklisted)}\n'
+                      f'* classes:{len(self._kc.class_info_map)}\n')
 
     def _find_osmetaclass_constructor(self):
         """
@@ -191,7 +200,6 @@ class CollectClasses(BasePhase):
             return False
 
         classname_str = idc.get_strlit_contents(classname_ea).decode()
-        classname_str_clean = symbols.clean_templated_name(classname_str)
         metaclass_arg = decompiler.traverse_casts_or_ref_branch(visitor.args[0])
         match metaclass_arg.op:
             case ida_hexrays.cot_var:
@@ -201,7 +209,7 @@ class CollectClasses(BasePhase):
                 # Usually for those there will be some other valid xref to this classname. So the approach I took here is to
                 # only inform the user of these errors after finishing collecting from all possible sources
                 # Fail silently and only check later
-                self._var_expr_errors[classname_str_clean].add(ea)
+                self._var_expr_errors[classname_str].add(ea)
                 return False
             case ida_hexrays.cot_obj:
                 metaclass_ea = metaclass_arg.obj_ea
@@ -228,7 +236,7 @@ class CollectClasses(BasePhase):
         # We found valid information. record it
         self.log.debug(f"Found metaclass info for {classname_str} at {ea:#x}")
 
-        self._metaclass_to_classname_builder.add_link(metaclass_ea, classname_str_clean)
+        self._metaclass_to_classname_builder.add_link(metaclass_ea, classname_str)
         self._metaclass_to_class_size[metaclass_ea] = class_size
 
         # Only store information for non-null values!
@@ -261,12 +269,21 @@ class CollectClasses(BasePhase):
 
         # Start one iteration by creating every ClassInfo instance for every discovered class
         for metaclass_ea, class_name in one_to_one_map.items():
+            if any(class_name.startswith(prefix) for prefix in self.TEMPLATE_BLACKLIST):
+                self.log.info(f'Skipping {class_name} because it is in the template blacklist blacklist..')
+                self._blacklisted.add(class_name)
+                continue
+
+            if class_name in self.CLASS_BLACKLIST:
+                self.log.info(f'Skipping {class_name} because it is in the class blacklist..')
+                self._blacklisted.add(class_name)
+                continue
+
             class_info = rtti.ClassInfo(class_name,
                                         metaclass_ea,
                                         self._metaclass_to_class_size[metaclass_ea])
 
             self._kc.class_info_map.add_classinfo(class_info)
-        self.log.info(f'Added {len(self._kc.class_info_map)} to the ClassInfo list')
 
         for metaclass_ea, class_name, class_info in self._kc.class_info_map.items():
 

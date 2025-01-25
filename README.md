@@ -18,10 +18,14 @@ Much of the functionality in ida_kernelcache is borrowed from [memctl], which is
 under the MIT license. Other sources are noted in the comments in the corresponding files.
 
 ## TODO:
-- [X] Implement creation of C++ types (conforming to IDA 7.2 new C++ types), actually in IDA 9.0 the API has been improved 
+- [ ] Symbolication
+  - [X] Apply a mangled function name and comment over all the vmethods
+  - [ ] Change the this pointer of all of the vmethods (after creating types)
+  - [ ] Support symbolication of vmethods that have multiple owning vtable entries!
+- [X] Implement creation of C++ types (conforming to IDA 7.2 new C++ types), actually in IDA 9.0 the API has been improved
   - [ ] Apply information to _vtbl virtual function members, with the name and signature from symdb
-  - [ ] Change the first argument type of every vmethod to this pointer
-  - [ ] Integrate IPSW symbols propagation through vmethods
+  - [ ] Hardcode known base types vtable structure from the XNU sources so that there are no misses. (level 1: OSObject, level 2: OSString, OSArray, OSDictioanry..)
+  - [X] Integrate IPSW symbols propagation through vmethods
   - [X] Implement detecting overridden functions and functions that are pure virtual
   - [X] Implement getting the PAC diversifier of every vtable entry
   - [X] Fix errors "does not seem to be a signed PAC pointer". UPDATE: seems like some objects are subject to multiple inheritance? In the past this was not supported by libkern++ 
@@ -70,9 +74,12 @@ under the MIT license. Other sources are noted in the comments in the correspond
 - [X] Add a test script to analyze the kernelcache using the new idalib (headless mode)
 - [X] Implement ColorizeVtables phase: set colors for vtable vmethods (which one overrides, which is new, which is inherited from super)
   The drawback here is that in order to set a color for each vtable entry I cannot retype the to the corresponding structure
+
 ## Improvements Needed
 - [ ] Resolve TODOs for edge cases in all of the phases
 
 Tracking issues
 1. 93 Classes are subject to multiple inheritance
 2. 70 Virtual methods that have wrong function boundaries
+3. Classes that don't have a vtable, "optimized" classes
+4. Vtable entries with a non-unique source

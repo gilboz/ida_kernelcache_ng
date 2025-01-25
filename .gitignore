@@ -21,8 +21,10 @@ tests/patch_undecoded.py
 tests/test_persistent_db.py
 tests/test_symbolication.py
 tests/test_pac_symbolication.py
+tests/classes.html
 ida_kernelcache/phases/*_symbolicate.py
 symdb.json
 
 # WIP scripts
 scripts/
+

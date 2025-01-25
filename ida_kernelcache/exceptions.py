@@ -47,3 +47,7 @@ class InvalidKeyTypeError(PhaseException):
     May be used to indicate that a key is not
     """
     pass
+
+
+class NewEdgeCaseError(PhaseException):
+    pass

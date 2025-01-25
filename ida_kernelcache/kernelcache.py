@@ -1,3 +1,4 @@
+import dataclasses
 import plistlib
 import re
 
@@ -18,6 +19,27 @@ logging.basicConfig(format='%(levelname)-10s %(name)s: %(message)s', level=loggi
 log = logging.getLogger(__name__)
 
 
+@dataclasses.dataclass
+class Kext:
+    name: str
+    load_addr: int
+    size: int
+    end_addr: int = dataclasses.field(init=False)
+    bad_addr: bool = dataclasses.field(init=False)
+
+    def __post_init__(self):
+        self.bad_addr = self.load_addr == 0x7fffffffffffffff
+        self.end_addr = self.load_addr + self.size
+
+    def __lt__(self, other):
+        if not isinstance(other, self.__class__):
+            raise TypeError(f'Kext < {type(other)} not supported')
+        return self.load_addr < other.load_addr
+
+    def __repr__(self):
+        return f'Kext(name={self.name}, load_addr={self.load_addr:#x}, end_addr={self.end_addr:#x})'
+
+
 class KernelCache(object):
     """
     I have the assumption that we are always interested in the latest kernelcaches. There isn't much sense in putting
@@ -30,18 +52,23 @@ class KernelCache(object):
     The current kernelcache I'm working on has 311 kexts and after loading it into IDA we get a total of *4301* segments
     """
 
-    def __init__(self):
+    def __init__(self, load: bool = True):
+        """
+        :param bool load: Whether to enable reloading RTTI information that was previously cached
+        """
         super().__init__()
         self._base = None
         self._prelink_info = None
 
         # TODO: make this persistent?
         self.rtti_db = rtti.RTTIDatabase()
-        self.rtti_db.load()
+        if load:
+            self.rtti_db.load()
         self.class_info_map = self.rtti_db.class_info_map
         self.vmethod_info_map = self.rtti_db.vmethod_info_map
 
         self.segments_list: list[Segment] = []
+        self._kexts: list[Kext] = []
 
         for i in range(ida_segment.get_segm_qty()):
             swig_segment = ida_segment.getnseg(i)
@@ -98,10 +125,20 @@ class KernelCache(object):
             if re.match(pattern, s.name, flags=re.IGNORECASE):
                 yield s
 
-    def all_kexts(self) -> list[str]:
-        if not self.prelink_info:
-            return []
-        return [k['CFBundleIdentifier'] for k in self.prelink_info['_PrelinkInfoDictionary']]
+    @property
+    def kexts(self) -> list[Kext]:
+        if self._kexts:
+            return self._kexts
+
+        if self.prelink_info:
+            for info in self.prelink_info['_PrelinkInfoDictionary']:
+                bundle_identifier = info['CFBundleIdentifier']
+                load_addr = info['_PrelinkExecutableLoadAddr'] & 0xFFFFFFFFFFFFFFFF
+                size = info.get('_PrelinkExecutableSize', 0)
+                self._kexts.append(Kext(bundle_identifier, load_addr, size))
+        else:
+            log.warning('Kext list is empty because no prelink info is available')
+        return self._kexts
 
     @staticmethod
     def is_supported() -> bool:

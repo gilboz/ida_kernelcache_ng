@@ -1,4 +1,6 @@
+import ida_funcs
 import ida_hexrays
+import ida_name
 import ida_xref
 import idc
 
@@ -9,6 +11,7 @@ from .base_phase import BasePhase
 
 from typing import TYPE_CHECKING
 
+from .. import rtti
 from ..exceptions import PhaseException
 from ..ida_helpers import strings, functions, decompiler
 
@@ -25,6 +28,7 @@ class ApplyRTTIInfoPhase(BasePhase):
     - Search through the kernelcache for OSMetaClass instances and add a symbol for each known instance
     - Populate IDA with virtual method table symbols
     """
+
     DYNAMIC_CAST_PANIC = '\"OSDynamicCast(AGXAccelerator, driverService)\" @%s:%d'
 
     def __init__(self, kc):
@@ -32,17 +36,13 @@ class ApplyRTTIInfoPhase(BasePhase):
 
     def run(self):
         for classname, classinfo in self._kc.class_info_map.items_by_type(str):
-            if consts.CXX_SCOPE in classname:
-                self.log.warning(f'Skipping symbolication of {classname} because it contains {consts.CXX_SCOPE}!')
-                continue
-
             self._add_metaclass_instance_symbol(classinfo)
 
-            # TODO: is this really how we want to handle classes without vtable information? Maybe we should use their superclass's vtable
+            # Only operate on classes that have vtable information
             if classinfo.vtable_info:
                 self._add_vtable_symbol(classinfo)
-            else:
-                self.log.debug(f'Skipping vtable symbol for {classname} because we dont have the corresponding vtable ea!')
+
+        self._apply_vmethod_symbols()
 
     def _find_safemetacast(self):
         """
@@ -71,19 +71,75 @@ class ApplyRTTIInfoPhase(BasePhase):
         """
         Add a symbol for the OSMetaClass instance at the specified address.
         """
-        metaclass_instance_symbol = symbols.metaclass_symbol_for_class(classinfo.class_name)
-        ea = classinfo.metaclass_ea
-        if not names.set_ea_name(ea, metaclass_instance_symbol, rename=True):
+        metaclass_instance_symbol = symbols.mangle_global_metaclass_instance_name(classinfo.class_name)
+        if not names.set_ea_name(classinfo.metaclass_ea, metaclass_instance_symbol, rename=True):
             self.log.error(f'Failed to set name at {classinfo.metaclass_ea:#x}! wanted {metaclass_instance_symbol}')
 
     def _add_vtable_symbol(self, classinfo: 'ClassInfo') -> None:
         """
         Set a symbol for the virtual method table at the specified address, renaming it if it already exists!
         """
-        vtable_symbol = symbols.vtable_symbol_for_class(classinfo.class_name)
-        if not names.set_ea_name(classinfo.vtable_info.vtable_ea, vtable_symbol, rename=True):
-            self.log.error(f'Failed to set name at {classinfo.vtable_info.vtable_ea:#x}! wanted {vtable_symbol}')
+        mangled_vtable_symbol = symbols.mangle_vtable_name(classinfo.class_name)
+        if not names.set_ea_name(classinfo.vtable_info.vtable_ea, mangled_vtable_symbol, rename=True):
+            self.log.error(f'Failed to set name at {classinfo.vtable_info.vtable_ea:#x}! wanted {mangled_vtable_symbol}')
+
+    def _apply_vmethod_symbols(self) -> None:
+        num_invalid_func = 0
+        num_multiple_owners = 0
+        num_auto_generated = 0
+        num_symbolicated = 0
+
+        for vmethod_ea, vmethod_info in self._kc.vmethod_info_map.items():
+
+            # Skip the pure virtual vmethod because it is a special case that has no "owning" vtable method
+            if vmethod_ea == rtti.VtableInfo.CXA_PURE_VIRTUAL_EA:
+                continue
+
+            # Cannot symbolicate correctly vmethod that don't point to a start of a function, I choose to skip it for now
+            # until there is a fix for that
+            # TODO: change this to raise an exception after resolving that issue for all vmethods
+            if vmethod_info.func is None:
+                self.log.warning(f'Skipping symbolication of {vmethod_ea:#x} because its function boundaries are wrong!')
+                num_invalid_func += 1
+                continue
+
+            if vmethod_info.multiple_owners:
+                if vmethod_info.mangled_symbol:
+                    self.log.warning(f'VMethod {vmethod_ea:#x} has multiple owners and a symbol {vmethod_info.mangled_symbol}!')
+                    # assert not vmethod_info.multiple_owners, f'VMethod {vmethod_ea:#x} has multiple owners and a symbol {vmethod_info.mangled_symbol}!'
+
+                # TODO: Resolve what is the correct class name in such cases
+                self.log.warning(f'Skipping symbolication of {vmethod_ea:#x} because it has multiple owners which we do not support yet!')
+                num_multiple_owners += 1
+                continue
+
+            mangled_symbol = vmethod_info.mangled_symbol
+
+            # No symbol, auto generate one
+            if mangled_symbol is None:
+                vmethod_name = consts.VMETHOD_NAME_TEMPLATE.format(index=vmethod_info.owning_vtable_entry.index)
+                mangled_symbol = symbols.mangle_vmethod_name(vmethod_info.owning_class_name, vmethod_name)
+                num_auto_generated += 1
+
+            # Apply the mangled symbol as the function name at the vmethod address
+            if not ida_name.set_name(vmethod_ea, mangled_symbol, ida_name.SN_FORCE):
+                raise PhaseException(f'Failed to set name {mangled_symbol} at {vmethod_ea:#x}')
+
+            # Set a function comment indicating the symbol source
+            vmethod_func_comment = consts.VMETHOD_FUNC_CMT_TEMPLATE.format(owning_class=vmethod_info.owning_class_name,
+                                                                           owning_vtable_entry_ea=vmethod_info.owning_vtable_entry.entry_ea,
+                                                                           pac_diversifier=vmethod_info.owning_vtable_entry.pac_diversifier,
+                                                                           symbol_source=vmethod_info.symbol_source.name)
+            ida_funcs.set_func_cmt(vmethod_info.func, vmethod_func_comment, repeatable=False)
+            num_symbolicated += 1
+
+        self.log.info(f'{num_invalid_func} symbols were skipped because of invalid function boundaries')
+        self.log.info(f'{num_multiple_owners} symbols were skipped because of multiple owners edge case that wedo not support yet')
+        self.log.info(f'{num_symbolicated - num_auto_generated}/{self._kc.vmethod_info_map.num_symbolicated} vmethod symbols applied to the IDB')
+        self.log.info(f'{num_auto_generated}/{num_symbolicated} auto-generated vmethod names applied to the IDB')
 
     def _symbolicate_overrides_for_classinfo(self):
-        # TODO: implement this?
+        """
+        TODO: check if there is a need for this logic when the symbol source is PAC_DB, and IPSW_DB
+        """
         raise NotImplementedError()

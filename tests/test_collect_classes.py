@@ -1,21 +1,19 @@
+from typing import TYPE_CHECKING
+
 import idapro
-import ida_kernelcache.kernelcache as kernelcache
+from test_utils import get_kc, groupby_segment
 import ida_kernelcache.phases
+from ida_kernelcache import rtti
 
 DB_PATH = r'./kernelcache_testing.i64'
 
 
 def main():
-    print('Opening DB')
-    err = idapro.open_database(DB_PATH, run_auto_analysis=False)
-    if err:
-        print(f'Failed opening DB..')
-        exit(1)
+    with get_kc(load=False) as kc:
+        kc.process(phases=[ida_kernelcache.phases.CollectClasses])
+        print(f'Found a total of {len(kc.class_info_map)}')
+        groupby_segment(kc)
 
-    kc = kernelcache.KernelCache()
-    kc.process(phases=[ida_kernelcache.phases.CollectClasses])
-    print(f'Found a total of {len(kc.class_info_map)}')
-    idapro.close_database(save=False)
 
 
 if __name__ == '__main__':

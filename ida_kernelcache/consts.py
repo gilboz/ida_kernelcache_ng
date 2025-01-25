@@ -17,7 +17,7 @@ CXX_SCOPE = '::'
 
 # Related to CreateTypes
 CXA_PURE_VIRTUAL = '__cxa_pure_virtual'
-FUNC_NAME_TEMPlATE = 'vmethod_{index}'
+VMETHOD_NAME_TEMPLATE = 'vmethod_{index}'
 FIELD_SEP = '\n    '
 
 VIRTUAL_FUNC_TEMPLATE = '__int64 (__fastcall *{func_name})({func_sig}); ///< {vmethod_ea:#x}'
@@ -51,3 +51,13 @@ BGCOLOR_RED = 0x00008B
 BGCOLOR_GREEN = 0x006400
 BGCOLOR_BLUE = 0x8B0000
 BGCOLOR_GRAY = 0x696969
+
+VMETHOD_FUNC_CMT_TEMPLATE = '''\
+############################################################################################################
+# [ida_kernelcache_ng]
+# This vmethod belongs to {owning_class}
+# Owning vtable entry ea: {owning_vtable_entry_ea:#x}
+# PAC Diversifier: {pac_diversifier:#x}
+# Symbol Source: {symbol_source}
+############################################################################################################
+'''

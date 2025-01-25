@@ -84,7 +84,7 @@ class CreateTypes(BasePhase):
 
             for vtable_entry in class_info.vtable_info.entries:
                 # TODO: implement get_ea_name and
-                func_name = consts.FUNC_NAME_TEMPlATE.format(index=vtable_entry.index)
+                func_name = consts.VMETHOD_NAME_TEMPLATE.format(index=vtable_entry.index)
                 # TODO: Implement get function signatures
                 func_decls.append(consts.VIRTUAL_FUNC_TEMPLATE.format(func_name=func_name, func_sig=f'{class_info.class_name} *__hidden this', vmethod_ea=vtable_entry.vmethod_ea))
 

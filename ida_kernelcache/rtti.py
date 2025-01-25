@@ -33,13 +33,16 @@ class ClassInfo(object):
     Python class to store C++ class information from KernelCache.
     """
 
-    def __init__(self, class_name: str, metaclass: int, class_size: int, superclass: 'ClassInfo' = None):
+    def __init__(self, class_name: str, metaclass: int, class_size: int, superclass: 'ClassInfo' = None, optimized: bool = False):
         self.class_name = class_name
         self.metaclass_ea = metaclass
         self.class_size = class_size
         self.superclass: 'ClassInfo | None' = superclass
         self._vtable_info: 'VtableInfo | None' = None
         self.subclasses = set()
+
+        # An "optimized" class is a class that we cannot associate with a vtable. It can still appear in the inheritance tree as an intermediate class though
+        self.optimized: bool = optimized
 
     def serialize(self) -> dict:
         return {
@@ -48,10 +51,11 @@ class ClassInfo(object):
             'class_size': self.class_size,
             'super_metaclass_ea': self.superclass.metaclass_ea if self.superclass else None,
             'vtable_info': self.vtable_info.serialize() if self.vtable_info else None,
+            'optimized': self.optimized
         }
 
     def __repr__(self):
-        return f'<ClassInfo {self.class_name}, size:{self.class_size}, metaclass:{self.metaclass_ea:#x}>'
+        return f'ClassInfo({self.class_name}, size:{self.class_size}, metaclass:{self.metaclass_ea:#x}, vtable_ea={self.vtable_info.vtable_ea if self.vtable_info else 0:#x}, optimized={int(self.optimized)})'
 
     @property
     def vtable_info(self) -> 'VtableInfo | None':
@@ -65,6 +69,9 @@ class ClassInfo(object):
 
     def is_subclass(self) -> bool:
         return self.superclass is not None
+
+    def is_middleclass(self) -> bool:
+        return self.is_subclass() and bool(len(self.subclasses))
 
     def data_field_offsets(self) -> (int, None, None):
         """
@@ -90,7 +97,7 @@ class ClassInfo(object):
         for offset in range(start_offset, self.class_size, consts.WORD_SIZE):
             yield offset
 
-    def ancestors(self, inclusive: bool = False) -> ['ClassInfo', None, None]:
+    def ancestors(self, inclusive: bool = False) -> ('ClassInfo', None, None):
         """A generator over all direct or indirect superclasses of this class.
 
         Ancestors are returned in order from root (most distance) to superclass (closest), and the
@@ -104,6 +111,20 @@ class ClassInfo(object):
                 yield ancestor
         if inclusive:
             yield self
+
+    def ancestors_bottom_up(self, incluive: bool = False) -> ('ClassInfo', None, None):
+        """
+        A generator over all direct or indirect superclasses of this class.
+
+        Ancestors are returned in order from root (most distance) to superclass (closest), and the
+        class itself is not returned.
+
+        """
+        if incluive:
+            yield self
+        if self.superclass:
+            for ancestor in self.superclass.ancestors_bottom_up(incluive=True):
+                yield ancestor
 
     def descendants(self, inclusive: bool = False) -> ['ClassInfo', None, None]:
         """A generator over all direct or indirect subclasses of this class.
@@ -125,22 +146,31 @@ class SymbolSource(enum.IntEnum):
     NO_SYMBOL = 0
     PAC_DB = enum.auto()
     IPSW_DB = enum.auto()
-    IPSW_PROPAGATION = enum.auto()
-
+    PROPAGATION = enum.auto()
 
 @dataclasses.dataclass
 class VMethodInfo:
     vmethod_ea: int
-    vtable_entries: list['VtableEntry'] = dataclasses.field(default_factory=list, repr=False)  # The relationship between vmethod and vtable entries is one-to-many
+    # The vtable entry that "owns" the vmethod. i.e. the only vtable entry of type added/overrides
+    # The relationship between vmethods and vtable entries is one-to-many.
+    # There is a one-to-one relationship between the "owning" vtable entry and the vmethod
+    owning_vtable_entry: 'VtableEntry | None' = None
     mangled_symbol: str | None = None  # A mangled symbol if known, None otherwise
     symbol_source: SymbolSource = SymbolSource.NO_SYMBOL  # An enumeration type specifying the symbol source if this vmethod has one
     func: ida_funcs.func_t | None = dataclasses.field(init=False)  # Easy access to IDA function structure. None if the vmethod_ea is not the function start address
+    multiple_owners: bool = dataclasses.field(init=False, default=False)
 
     def __post_init__(self):
         if functions.is_function_start(self.vmethod_ea):
             self.func = ida_funcs.get_func(self.vmethod_ea)
         else:
             self.func = None
+
+    @property
+    def owning_class_name(self) -> str:
+        assert self.owning_vtable_entry, 'Attempting to fetch the owning class name of a vmethod that does not have an owning vtable entry'
+        assert not self.multiple_owners, 'Getting the owning class name of a vmethod that has multiple owners is not supported yet'
+        return self.owning_vtable_entry.vtable_info.class_info.class_name
 
     def __hash__(self):
         return hash(self.vmethod_ea)
@@ -149,11 +179,12 @@ class VMethodInfo:
         return isinstance(other, self.__class__) and self.vmethod_ea == other.vmethod_ea
 
     def __repr__(self) -> str:
-        return f'VMethodInfo(vmethod_ea={self.vmethod_ea:#x}, mangled_symbol={self.mangled_symbol}, symbol_source={self.symbol_source}, valid={self.func is not None}, vtable_entries={len(self.vtable_entries)})'
+        return f'VMethodInfo(vmethod_ea={self.vmethod_ea:#x}, mangled_symbol={self.mangled_symbol}, symbol_source={self.symbol_source}, valid={self.func is not None} owning_vtable_entry=({self.owning_vtable_entry.entry_ea if self.owning_vtable_entry else 0:#x}))'
 
 
 @dataclasses.dataclass
 class VtableEntry:
+    vtable_info: 'VtableInfo'  # The vtable that this vtable entry belongs to
     index: int  # The index of the vtable entry in the current vtable
     entry_ea: int  # Address of the entry in the virtual table
     vmethod_ea: int  # Address of the virtual method that the vtable entry points to
@@ -273,23 +304,29 @@ class VtableInfo:
         if self._cached_entries:
             return self._cached_entries
 
-        # If this vtable belongs to a subclass of some other class we can determine which functions have been overridden
+        # If this vtable belongs to a subclass of some other class we use that to classify the vtable entries in this vtable info
         superclass_vtable_info = None
         if self.class_info.is_subclass():
-            superclass_vtable_info = self.class_info.superclass.vtable_info
+
+            # We must handle "optimized" intermediate classes that have no vtable. If we handle a subclass of an optimized class (has no vtable)
+            # We will wrongly classify every vtable entry in the class we are currently handling as "added" instead of comparing it with the correct one
+            for ancestor in self.class_info.ancestors_bottom_up():
+                if ancestor.vtable_info:
+                    superclass_vtable_info = ancestor.vtable_info
+                    break
+                assert ancestor.optimized, f'{ancestor.class_name} is a non-optimized ancestor and has no vtable'
 
         for index, vtable_entry_ea, vmethod_ea in self._vmethods():
             pure_virtual = vmethod_ea == self.CXA_PURE_VIRTUAL_EA
-
-            inherited, overrides, added = False, False, True
-            if superclass_vtable_info and index < superclass_vtable_info.num_vmethods:
+            added = superclass_vtable_info is None or index >= superclass_vtable_info.num_vmethods
+            inherited, overrides = False, False
+            if not added:
                 super_vtable_entry = superclass_vtable_info.entries[index]
                 inherited = super_vtable_entry.vmethod_ea == vmethod_ea
                 overrides = super_vtable_entry.vmethod_ea != vmethod_ea
-                added = False
 
             # Create a new vtable entry
-            vtable_entry = VtableEntry(index, vtable_entry_ea, vmethod_ea, inherited, overrides, added, pure_virtual)
+            vtable_entry = VtableEntry(self, index, vtable_entry_ea, vmethod_ea, inherited, overrides, added, pure_virtual)
 
             # Store it in the cached entries
             self._cached_entries.append(vtable_entry)
@@ -419,11 +456,9 @@ class ClassInfoMap:
         while queue:
             class_info = queue.popleft()
 
-            # Skip classes without vtable information
-            if must_have_vtable and class_info.vtable_info is None:
-                continue
-
-            yield class_info
+            # Do not yield classes without vtable information if asked to
+            if (must_have_vtable and class_info.vtable_info) or not must_have_vtable:
+                yield class_info
 
             # Add the next level of classes to the end of the deque
             for subclass in class_info.subclasses:
@@ -444,7 +479,7 @@ class VMethodInfoMap:
 
     def _create_vmethod_info(self, vmethod_ea: int) -> None:
         assert vmethod_ea not in self._vmethods, 'vmethod already exists in the map!'
-        vmethod_info = VMethodInfo(vmethod_ea, [], None, SymbolSource.NO_SYMBOL)
+        vmethod_info = VMethodInfo(vmethod_ea)
         self._vmethods[vmethod_ea] = vmethod_info
 
     def get_vmethod(self, vmethod_ea: int, create: bool = True) -> VMethodInfo:
@@ -458,7 +493,13 @@ class VMethodInfoMap:
     def add_relation(self, vtable_entry: VtableEntry, create: bool = True) -> None:
         assert vtable_entry.vmethod_info is None, 'VtableEntry already has a VMethodInfo instance!'
         vmethod_info = self.get_vmethod(vtable_entry.vmethod_ea, create)
-        vmethod_info.vtable_entries.append(vtable_entry)
+
+        if not vtable_entry.pure_virtual and (vtable_entry.added or vtable_entry.overrides):
+            if vmethod_info.owning_vtable_entry is not None:
+                log.error(f'vmethod {vmethod_info.vmethod_ea:#x} owned by {vmethod_info.owning_vtable_entry.vtable_info.class_info.class_name} '
+                          f'now wants to be owned by {vtable_entry.vtable_info.class_info.class_name}!')
+                vmethod_info.multiple_owners = True
+            vmethod_info.owning_vtable_entry = vtable_entry
         vtable_entry.vmethod_info = vmethod_info
 
     def __len__(self) -> int:
@@ -523,7 +564,7 @@ class RTTIDatabase:
 
             # Load class info
             for class_dict in d['classes']:
-                new_class_info = ClassInfo(class_dict['class_name'], class_dict['metaclass_ea'], class_dict['class_size'])
+                new_class_info = ClassInfo(class_dict['class_name'], class_dict['metaclass_ea'], class_dict['class_size'], optimized=class_dict['optimized'])
                 self.class_info_map.add_classinfo(new_class_info)
 
             # Reconstruct inheritance tree
@@ -535,10 +576,15 @@ class RTTIDatabase:
                     class_info.superclass = superclass_info
                     superclass_info.subclasses.add(class_info)
 
-            # Load vtable info
-            for class_dict in d['classes']:
-                class_info = self.class_info_map[class_dict['metaclass_ea']]
+            # We could have saved the data this way in the first place, but nevermind
+            metaclass_ea_to_class_dict = {class_dict['metaclass_ea']: class_dict for class_dict in d['classes']}
+
+            # Load vtable info, must be done in BFS because of the vmethod construction
+            for class_info in self.class_info_map.bfs(must_have_vtable=False):
+
+                class_dict = metaclass_ea_to_class_dict[class_info.metaclass_ea]
                 vtable_dict = class_dict['vtable_info']
+
                 if vtable_dict:
                     new_vtable_info = VtableInfo(vtable_dict['vtable_ea'], vtable_dict['end_ea'], vtable_dict['has_sentinel'])
                     class_info.vtable_info = new_vtable_info

@@ -18,7 +18,7 @@ import ida_kernelcache.consts as consts
 from ida_kernelcache.exceptions import PhaseException
 
 
-def method_name(symbol):
+def extract_method_name(symbol) -> str | None:
     """Get the name of the C++ method from its symbol.
 
     If the symbol demangles to 'Class::method(args)', this function returns 'method'.
@@ -186,7 +186,7 @@ def _mangle_name(scopes):
     return symbol
 
 
-def vtable_symbol_for_class(classname) -> str:
+def mangle_vtable_name(classname) -> str:
     """Get the mangled symbol name for the vtable for the given class name.
 
     Arguments:
@@ -213,14 +213,16 @@ def vtable_symbol_get_class(symbol):
 
 
 def clean_templated_name(templated_name: str) -> str:
-    # TODO: below is a hack fix to handle names of templates. We need a better way to handle them.
-    # example "OSValueObject<void*>" -> "OSValueObject_voidP_"
-    # also: iOS17b1 OSValueObject<OSKextRequestResourceCallback>::fields field on the struct: OSValueObject<OSKextRequestResourceCallback>
+    """
+    TODO: below is a hack fix to handle names of templates. We need a better way to handle them.
+    example "OSValueObject<void*>" -> "OSValueObject_voidP_"
+    also: iOS17b1 OSValueObject<OSKextRequestResourceCallback>::fields field on the struct: OSValueObject<OSKextRequestResourceCallback>
+    """
     clean_name = templated_name.replace("<", "_").replace(">", "_").replace("*", "P")
     return clean_name
 
 
-def metaclass_symbol_for_class(classname: str) -> str:
+def mangle_global_metaclass_instance_name(classname: str) -> str:
     """
     Get the symbol name for the OSMetaClass instance for the given class name.
     """
@@ -230,6 +232,20 @@ def metaclass_symbol_for_class(classname: str) -> str:
     if mangled is None:
         raise PhaseException(f'Failed to mangle classname!')
     return f'__Z{mangled}'
+
+
+def mangle_vmethod_name(classname: str, method_name: str) -> str:
+    """
+    For vmethod that we were not able to associate with a symbol during the symbolication phases
+    We still want to rename it to indicate that this is a vmethod of some class.
+    We generate a mangled symbol in the following fashion <class_name>::<method_name>(void)
+    """
+    assert consts.CXX_SCOPE not in classname, f'{classname} contains {consts.CXX_SCOPE}!'
+
+    mangled = _mangle_name((classname, method_name))
+    if mangled is None:
+        raise PhaseException(f'Failed to mangle classname!')
+    return f'__Z{mangled}v'
 
 
 NESTED_NAME_PATTERN = re.compile(r'__ZN([rVK]?[RO]?)(\d+)(.+)', flags=re.IGNORECASE)
