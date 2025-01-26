@@ -242,3 +242,12 @@ class CollectVtables(BasePhase):
 
         if num_with_sentinel:
             self.log.warning(f'{num_with_sentinel} classes are possibly subject to multiple inheritance, which we do not support yet!')
+
+
+# TODO: fix the force_function functionality either in this phase or an indepenedent phase
+# def _convert_vtable_methods_to_functions(vtable, length):
+#     """Convert each virtual method in the vtable into an IDA function."""
+#     for vmethod in vtable_methods(vtable, length=length):
+#         if not idau.force_function(vmethod):
+#             _log(0, 'Could not convert virtual method {:#x} into a function', vmethod)
+

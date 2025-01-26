@@ -51,3 +51,11 @@ class InvalidKeyTypeError(PhaseException):
 
 class NewEdgeCaseError(PhaseException):
     pass
+
+
+class DemanglingError(PhaseException):
+    pass
+
+
+class StringExtractionError(PhaseException):
+    pass

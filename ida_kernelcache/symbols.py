@@ -12,39 +12,41 @@ strings.
 
 import re
 
-import idc
 import idaapi
+import idc
+
 import ida_kernelcache.consts as consts
-from ida_kernelcache.exceptions import PhaseException
+from ida_kernelcache.exceptions import PhaseException, StringExtractionError
+from ida_kernelcache.ida_helpers import names
 
 
-def extract_method_name(symbol) -> str | None:
-    """Get the name of the C++ method from its symbol.
-
+def extract_method_name(mangled_symbol) -> str:
+    """
+    Get the name of the C++ method from its symbol.
     If the symbol demangles to 'Class::method(args)', this function returns 'method'.
     """
+    demangled = names.demangle(mangled_symbol)
     try:
-        demangled = idc.demangle_name(symbol, idc.get_inf_attr(idc.INF_SHORT_DEMNAMES))
         func = demangled.split('::', 1)[1]
         base = func.split('(', 1)[0]
-        return base or None
-    except:
-        return None
+    except (KeyError, IndexError, AttributeError):
+        raise StringExtractionError(f'Failed to extract method namefrom mangled symbol {mangled_symbol}')
+    return base
 
 
-def method_arguments_string(symbol):
+def method_arguments_string(symbol) -> str:
     """Get the arguments string of the C++ method from its symbol.
 
     If the symbol demangles to 'Class::method(arg1, arg2)', this function returns 'arg1, arg2'.
     """
+    demangled = names.demangle(symbol)
     try:
-        demangled = idc.demangle_name(symbol, idc.get_inf_attr(idc.INF_LONG_DEMNAMES))
         func = demangled.split('::', 1)[1]
         args = func.split('(', 1)[1]
         args = args.rsplit(')', 1)[0].strip()
-        return args
-    except:
-        return None
+    except (AttributeError, KeyError, IndexError):
+        raise StringExtractionError(f'Failed to extract arguments string from: {demangled}')
+    return args
 
 
 def method_arguments(symbol):
@@ -204,7 +206,7 @@ def mangle_vtable_name(classname) -> str:
 def vtable_symbol_get_class(symbol):
     """Get the class name for a vtable symbol."""
     try:
-        demangled = idc.demangle_name(symbol, idc.get_inf_attr(idc.INF_SHORT_DEMNAMES))
+        demangled = names.demangle(symbol)
         pre, post = demangled.split("`vtable for'", 1)
         assert pre == ''
         return post

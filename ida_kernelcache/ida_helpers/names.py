@@ -3,6 +3,8 @@ import idc
 import ida_bytes
 import ida_name
 
+from ida_kernelcache.exceptions import DemanglingError
+
 
 def get_name_ea(name, fromaddr=idc.BADADDR):
     """
@@ -80,4 +82,7 @@ def set_ea_name(ea, name, rename=False, auto=False):
 
 
 def demangle(mangled_symbol: str) -> str:
-    return ida_name.demangle_name(mangled_symbol, idaapi.INF_SHORT_DEMNAMES, ida_name.DQT_FULL)
+    demangled_symbol = ida_name.demangle_name(mangled_symbol, 0, ida_name.DQT_FULL)
+    if demangled_symbol:
+        return demangled_symbol
+    raise DemanglingError(f'Failed to demangle {mangled_symbol}!')

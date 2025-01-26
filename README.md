@@ -20,7 +20,7 @@ under the MIT license. Other sources are noted in the comments in the correspond
 ## TODO:
 - [ ] Symbolication
   - [X] Apply a mangled function name and comment over all the vmethods
-  - [ ] Change the this pointer of all of the vmethods (after creating types)
+  - [ ] Change the this pointer of all the vmethods (after creating types)
   - [ ] Support symbolication of vmethods that have multiple owning vtable entries!
 - [X] Implement creation of C++ types (conforming to IDA 7.2 new C++ types), actually in IDA 9.0 the API has been improved
   - [ ] Apply information to _vtbl virtual function members, with the name and signature from symdb

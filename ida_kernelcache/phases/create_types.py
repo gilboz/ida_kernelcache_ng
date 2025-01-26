@@ -3,23 +3,15 @@ Refer to: https://docs.hex-rays.com/user-guide/user-interface/menu-bar/view/c++-
 This is why I set the EA as struct member comments: https://hex-rays.com/blog/igor-tip-of-the-week-15-comments-in-structures-and-enums
 """
 
-from collections import deque
 from typing import TYPE_CHECKING
 
 import ida_kernwin
 import ida_typeinf
-import ida_xref
-import idautils
-import idc
 
-from ida_kernelcache import utils, consts, rtti
+from ida_kernelcache import consts, symbols
 from ida_kernelcache.exceptions import PhaseException
-from ida_kernelcache.ida_helpers import strings, functions, names
 from ida_kernelcache.ida_helpers import types
 from .base_phase import BasePhase
-
-if TYPE_CHECKING:
-    from ida_kernelcache.rtti import ClassInfo
 
 
 class CreateTypes(BasePhase):
@@ -28,7 +20,6 @@ class CreateTypes(BasePhase):
     The struct definitions should represent the inheritance relationship between the classes
     This phase was improved to support the c++ objects support that was added in IDA 7.2, in particular the __cppobj
     attribute and the special _vtbl_layout suffix.
-
 
     In IDA a cpp structure has the TAUDT_CPPOBJ flag set in its udt_type_data_t object.
     Inheritance is achieved through a special member which is udm_t that is marked as baseclass at offset 0
@@ -60,16 +51,15 @@ class CreateTypes(BasePhase):
         """
         Do a breadth first scan, the inheritance relationship forms a directed acylic graph so there is no need
         to track down visited nodes
+        TODO: Why we don't find OSMetaClass vtable?
         """
-        queue: deque[ClassInfo] = deque((ci for ci in self._kc.class_info_map.values() if ci.superclass is None))
+        num_vtbl_types = 0
         num_created = 0
-        while queue:
-            class_info = queue.popleft()
+        func_name_conflicts = 0
+        for class_info in self._kc.class_info_map.bfs(must_have_vtable=False):
 
-            # TODO: handle types with unresolved vtables somehow..?
-            # TODO: Why we don't find OSMetaClass vtable?
-            if class_info.vtable_info is None:
-                self.log.warning(f'Not creating type for {class_info.class_name} and its {utils.iterlen(class_info.descendants())} descendants')
+            # TODO: stop skipping OSMetaClass when we fix its vtable finding implementation
+            if class_info.class_name == 'OSMetaClass':
                 continue
 
             if class_info.class_size % consts.WORD_SIZE:
@@ -82,12 +72,6 @@ class CreateTypes(BasePhase):
                 field_decls.append(consts.VPTR_FIELD)
                 superclass_name = ''
 
-            for vtable_entry in class_info.vtable_info.entries:
-                # TODO: implement get_ea_name and
-                func_name = consts.VMETHOD_NAME_TEMPLATE.format(index=vtable_entry.index)
-                # TODO: Implement get function signatures
-                func_decls.append(consts.VIRTUAL_FUNC_TEMPLATE.format(func_name=func_name, func_sig=f'{class_info.class_name} *__hidden this', vmethod_ea=vtable_entry.vmethod_ea))
-
             for offset in class_info.data_field_offsets():
                 field_decls.append(consts.DATA_FIELD_TEMPLATE.format(offset=offset))
 
@@ -98,32 +82,63 @@ class CreateTypes(BasePhase):
                 data_fields=consts.FIELD_SEP.join(field_decls)
             )
 
+            num_created += 1
+
+            # Skip creation of vtable types for optimized classes (without vtables)
+            if class_info.optimized:
+                types.create_type_from_decl(f'{cls_type_decl}', replace=True)
+                class_local_type = types.LocalType(class_info.class_name)
+                self.log.debug(f'Created class for {class_info.class_name}! ordinal: {class_local_type.ordinal}')
+                continue
+
+            func_names: set[str] = set()
+
+            # We do not create a vtable type for
+            for vtable_entry in class_info.vtable_info.entries:
+
+                # TODO: Even though vtable entries might be pure virtual they still have a different pac diversifier
+                #  and we can figure out what the name of the vtable entry should be
+                func_name = consts.VMETHOD_NAME_TEMPLATE.format(index=vtable_entry.index)
+
+                if not vtable_entry.pure_virtual and vtable_entry.vmethod_info.mangled_symbol:
+                    # Might raise StringExtractionError or DemanglingError
+                    func_name = symbols.extract_method_name(vtable_entry.vmethod_info.mangled_symbol)
+
+                # TODO: IDA has a bug that does will fail to parse vtable declaration if two vmethods have the same name,
+                #  even if they have a different signature.
+                if func_name in func_names:
+                    func_name_conflicts += 1
+
+                    # TODO: maybe just add a running suffix
+                    func_name = consts.VMETHOD_NAME_TEMPLATE.format(index=vtable_entry.index)
+
+                func_names.add(func_name)
+
+                # TODO: Implement a better function signature applying either though the mangled symbol or by using the decompiler's guessing
+                func_decls.append(consts.VIRTUAL_FUNC_TEMPLATE.format(func_name=func_name,
+                                                                      func_sig=f'{class_info.class_name} *__hidden this',
+                                                                      vmethod_ea=vtable_entry.vmethod_ea))
+
             vtbl_type_decl = consts.VTABLE_DECL_TEMPLATE.format(
                 vtable_ea=class_info.vtable_info.vtable_ea,
                 class_name=class_info.class_name,
                 virtual_funcs=consts.FIELD_SEP.join(func_decls),
             )
-
+            print(cls_type_decl)
+            print(vtbl_type_decl)
             types.create_type_from_decl(f'{cls_type_decl}\n{vtbl_type_decl}', replace=True)
-            class_local_type = types.LocalType(class_info.class_name)
             vtable_local_type = types.LocalType(f'{class_info.class_name}_vtbl')
-
-            self.log.debug(f'Created class+vtable types for {class_info.class_name}! ordinals: {class_local_type.ordinal} {vtable_local_type.ordinal}')
-            if not class_info.is_subclass():
-                self.log.info(f'Changing __vftable type in {class_info.class_name}')
-                class_local_type.set_member_type(0, f'{class_info.class_name}_vtbl *')
-
             vtable_local_type.udt.set_vftable(True)
             ida_typeinf.set_vftable_ea(vtable_local_type.ordinal, class_info.vtable_info.vtable_ea)
 
-            num_created += 1
-            for subclass in class_info.subclasses:
-                queue.append(subclass)
-        self.log.info(f'Created {num_created} new types!')
+            self.log.debug(f'Created vtable type for {class_info.class_name}! ordinal: {vtable_local_type.ordinal}')
 
-# TODO: add force_function functionality either to this phase or an indepenedent phase
-# def _convert_vtable_methods_to_functions(vtable, length):
-#     """Convert each virtual method in the vtable into an IDA function."""
-#     for vmethod in vtable_methods(vtable, length=length):
-#         if not idau.force_function(vmethod):
-#             _log(0, 'Could not convert virtual method {:#x} into a function', vmethod)
+            if not class_info.is_subclass():
+                self.log.info(f'Changing __vftable type in {class_info.class_name}')
+                class_local_type = types.LocalType(class_info.class_name)
+                class_local_type.set_member_type(0, f'{class_info.class_name}_vtbl *')
+            num_vtbl_types += 1
+
+        self.log.info(f'{num_created} new class types created!')
+        self.log.info(f'{num_created} new vtable types created!')
+        self.log.info(f'{func_name_conflicts} function name conflicts!')
