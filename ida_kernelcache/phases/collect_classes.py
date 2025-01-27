@@ -270,7 +270,7 @@ class CollectClasses(BasePhase):
         # Start one iteration by creating every ClassInfo instance for every discovered class
         for metaclass_ea, class_name in one_to_one_map.items():
             if any(class_name.startswith(prefix) for prefix in self.TEMPLATE_BLACKLIST):
-                self.log.info(f'Skipping {class_name} because it is in the template blacklist blacklist..')
+                self.log.info(f'Skipping {class_name} because it is in the template blacklist..')
                 self._blacklisted.add(class_name)
                 continue
 

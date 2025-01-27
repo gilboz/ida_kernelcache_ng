@@ -495,8 +495,9 @@ class VMethodInfoMap:
         vmethod_info = self.get_vmethod(vtable_entry.vmethod_ea, create)
 
         if not vtable_entry.pure_virtual and (vtable_entry.added or vtable_entry.overrides):
+            # TODO: resolve this
             if vmethod_info.owning_vtable_entry is not None:
-                log.error(f'vmethod {vmethod_info.vmethod_ea:#x} owned by {vmethod_info.owning_vtable_entry.vtable_info.class_info.class_name} '
+                log.debug(f'vmethod {vmethod_info.vmethod_ea:#x} owned by {vmethod_info.owning_vtable_entry.vtable_info.class_info.class_name} '
                           f'now wants to be owned by {vtable_entry.vtable_info.class_info.class_name}!')
                 vmethod_info.multiple_owners = True
             vmethod_info.owning_vtable_entry = vtable_entry

@@ -76,10 +76,10 @@ class PacSymbolicate(BasePhase):
 
                     demangled_symbol = names.demangle(mangled_symbol)
                     self.log.debug(f'{vtable_entry.vmethod_ea:#x} {demangled_symbol} '
-                                  f'o:{int(vtable_entry.overrides)} '
-                                  f'i:{int(vtable_entry.inherited)} '
-                                  f'pv:{int(vtable_entry.pure_virtual)} '
-                                  f'a:{int(vtable_entry.added)}')
+                                   f'o:{int(vtable_entry.overrides)} '
+                                   f'i:{int(vtable_entry.inherited)} '
+                                   f'pv:{int(vtable_entry.pure_virtual)} '
+                                   f'a:{int(vtable_entry.added)}')
 
         num_not_symbolicated = len(self._kc.vmethod_info_map) - self._kc.vmethod_info_map.num_symbolicated
 

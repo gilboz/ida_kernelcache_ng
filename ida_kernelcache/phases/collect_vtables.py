@@ -105,13 +105,13 @@ class CollectVtables(BasePhase):
             # TODO: Probably a better check is to see if all of the references to this metaclass_ea is in __mod_init or __mod_term.
             if class_info.is_middleclass():
                 class_info.optimized = True
-                self.log.info(f'Marked {class_info.class_name} metaclass_ea:{metaclass_ea:#x} as optimized without a vtable')
+                self.log.debug(f'Marked {class_info.class_name} metaclass_ea:{metaclass_ea:#x} as optimized without a vtable')
             else:
                 raise PhaseException(f'Failed to find {class_info.class_name}::getMetaClass! metaclass_ea {metaclass_ea:#x}')
 
         # Log statistics to the user
         self.log.info(f'Found {len(self._metaclass_ea_to_getmetaclass_ea)}/{len(self._kc.class_info_map)}! '
-                      f'fallback: {num_fallback_findings} not found: {len(self._not_found_set)}')
+                      f'fallback: {num_fallback_findings} optimized:{len(self._not_found_set)}')
 
     def _is_getmetaclass_method(self, xref_ea: int, metaclass_ea: int) -> bool:
         cfunc = ida_hexrays.decompile(xref_ea)

@@ -13,6 +13,7 @@ tests/*.i64
 tests/*.id*
 tests/*.nam
 tests/*.til
+tests/kernelcaches/
 
 
 # In the oven
@@ -20,7 +21,6 @@ tests/test_patches.py
 tests/patch_undecoded.py
 tests/test_persistent_db.py
 tests/classes.html
-
 # WIP scripts
 scripts/
 
