@@ -42,6 +42,10 @@ class TypeNotFoundError(LocalTypeError):
     pass
 
 
+class FuncTypeError(LocalTypeError):
+    pass
+
+
 class InvalidKeyTypeError(PhaseException):
     """
     May be used to indicate that a key is not

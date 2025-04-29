@@ -14,13 +14,13 @@ tests/*.id*
 tests/*.nam
 tests/*.til
 tests/kernelcaches/
-
+tests/compiling/
 
 # In the oven
 tests/test_patches.py
 tests/patch_undecoded.py
-tests/test_persistent_db.py
 tests/classes.html
+
 # WIP scripts
-scripts/
+wip_scripts/
 

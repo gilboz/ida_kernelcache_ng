@@ -2,9 +2,6 @@
 Refer to: https://docs.hex-rays.com/user-guide/user-interface/menu-bar/view/c++-type-details
 This is why I set the EA as struct member comments: https://hex-rays.com/blog/igor-tip-of-the-week-15-comments-in-structures-and-enums
 """
-
-from typing import TYPE_CHECKING
-
 import ida_kernwin
 import ida_typeinf
 
@@ -51,7 +48,6 @@ class CreateTypes(BasePhase):
         """
         Do a breadth first scan, the inheritance relationship forms a directed acylic graph so there is no need
         to track down visited nodes
-        TODO: Why we don't find OSMetaClass vtable?
         """
         num_vtbl_types = 0
         num_created = 0
@@ -88,7 +84,7 @@ class CreateTypes(BasePhase):
             if class_info.optimized:
                 types.create_type_from_decl(f'{cls_type_decl}', replace=True)
                 class_local_type = types.LocalType(class_info.class_name)
-                self.log.debug(f'Created class for {class_info.class_name}! ordinal: {class_local_type.ordinal}')
+                self.log.info(f'{class_info.class_name} is an optimized class without a vtable! Class type ordinal: {class_local_type.ordinal}')
                 continue
 
             func_names: set[str] = set()
@@ -124,8 +120,7 @@ class CreateTypes(BasePhase):
                 class_name=class_info.class_name,
                 virtual_funcs=consts.FIELD_SEP.join(func_decls),
             )
-            print(cls_type_decl)
-            print(vtbl_type_decl)
+
             types.create_type_from_decl(f'{cls_type_decl}\n{vtbl_type_decl}', replace=True)
             vtable_local_type = types.LocalType(f'{class_info.class_name}_vtbl')
             vtable_local_type.udt.set_vftable(True)
@@ -140,5 +135,5 @@ class CreateTypes(BasePhase):
             num_vtbl_types += 1
 
         self.log.info(f'{num_created} new class types created!')
-        self.log.info(f'{num_created} new vtable types created!')
+        self.log.info(f'{num_vtbl_types} new vtable types created!')
         self.log.info(f'{func_name_conflicts} function name conflicts!')

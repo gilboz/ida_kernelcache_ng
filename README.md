@@ -5,6 +5,12 @@ An IDA Plugin for analyzing iOS kernelcaches. **Currently, this is still WIP.**
 * Because this is a major refactor (This is now an actual IDA plugin!) and seems like the original authors no longer maintain their repository I've created this one.
 * Hopefully this could gain more traction as more researchers will contribute with their ideas to automate the tedious reversing process.
 
+## Installation
+You have three options:
+1. If you just wanna use it as an IDA plugin install it to your `~/.idapro/plugins` directory.
+2. If you wish write scripts you may install it as a pip package 
+3. If you want to contribute see CONTRIBUTING.md
+
 ## Credits
 * This repository is based upon the original toolkit created by Brandon Azad, [repo](https://github.com/bazad/ida_kernelcache).
   * The original tool was written for iOS versions 10,11,12 (we are currently at 18.0). While most of the libkern++ runtime hasn't changed there have been some major changes.
@@ -17,7 +23,7 @@ ida_kernelcache is released under the MIT license.
 ## Improvements Needed
 - [ ] Resolve TODOs for edge cases in all of the phases
 
-Tracking issues
+## Tracking Known Issues
 1. 93 Classes are subject to multiple inheritance
 2. 70 Virtual methods that have wrong function boundaries
 3. Classes that don't have a vtable, "optimized" classes

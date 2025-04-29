@@ -9,7 +9,7 @@ from test_utils import get_kc
 
 
 def main():
-    with get_kc(load=True) as kc:
+    with get_kc(load=False) as kc:
         phases = [CollectClasses, CollectVtables, PacSymbolicate, IPSWSymbolicate, ApplyRTTIInfoPhase]
         kc.process(phases=phases)
 
