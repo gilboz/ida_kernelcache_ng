@@ -1,6 +1,7 @@
 import dataclasses
 import plistlib
 import re
+import time
 
 import ida_auto
 import ida_segment
@@ -184,6 +185,7 @@ class KernelCache(object):
             log.info(f'************************************* Starting phase: {phase_cls.__name__} *************************************')
             phase = phase_cls(self)
 
+            start_time = time.time()
             try:
                 phase.run()
             except PhaseException as ex:
@@ -195,7 +197,8 @@ class KernelCache(object):
                 log.exception(ex)
                 break
             else:
-                log.info(f'************************************* Finished phase: {phase_cls.__name__} *************************************')
+                end_time = time.time()
+                log.info(f'************************************* Finished phase: {phase_cls.__name__} time:{end_time-start_time:.3f}s *************************************')
 
             # Wait for auto analysis to complete after every phase.
             # Honestly I'm not sure if this is needed but the auto analyzer is IDLE it will return immediately

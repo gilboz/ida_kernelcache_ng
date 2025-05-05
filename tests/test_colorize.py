@@ -1,4 +1,3 @@
-import idapro
 from test_utils import get_kc
 from ida_kernelcache.phases import ColorizeVtables
 

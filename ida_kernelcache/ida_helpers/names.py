@@ -3,6 +3,7 @@ import idc
 import ida_bytes
 import ida_name
 
+from ida_kernelcache import consts
 from ida_kernelcache.exceptions import DemanglingError
 
 
@@ -82,6 +83,12 @@ def set_ea_name(ea, name, rename=False, auto=False):
 
 
 def demangle(mangled_symbol: str) -> str:
+
+    # TODO: understand why the compiler emits symbols that are not conforming to the ABI
+    # Cannot demangle symbols that end with _vfpthunk_
+    if mangled_symbol.endswith(consts.VFPTHUNK_SUFFIX):
+        mangled_symbol = mangled_symbol.rstrip(consts.VFPTHUNK_SUFFIX)
+
     demangled_symbol = ida_name.demangle_name(mangled_symbol, 0, ida_name.DQT_FULL)
     if demangled_symbol:
         return demangled_symbol

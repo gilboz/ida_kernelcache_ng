@@ -57,6 +57,7 @@ class IPSWSymbolicate(BasePhase):
                 mangled_symbol = self.ipsw_symbols_db[vmethod_info.vmethod_ea]
 
                 if not mangled_symbol.startswith('__ZN'):
+                    # TODO: raise exception here?
                     self.log.error(f'{mangled_symbol} symbol for vmethod at {vmethod_info.vmethod_ea:#x} is not a valid nested name symbol!')
                     continue
                 vmethod_info.mangled_symbol = mangled_symbol

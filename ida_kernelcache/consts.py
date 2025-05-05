@@ -23,11 +23,13 @@ FIELD_SEP = '\n    '
 VIRTUAL_FUNC_TEMPLATE = '__int64 (__fastcall *{func_name})({func_sig}); ///< {vmethod_ea:#x}'
 VPTR_FIELD = 'void *__vftable;'
 DATA_FIELD_TEMPLATE = '__int64 field_{offset:#04x};'
+
+# TODO: don't need these members in the vtable?
+# unsigned __int64 this_offset;
+# void *rtti;
 VTABLE_DECL_TEMPLATE = '''\
 /// {vtable_ea:#x}
 struct {class_name}_vtbl {{
-    unsigned __int64 this_offset;
-    void *rtti;
     {virtual_funcs}
 }};'''
 
@@ -61,3 +63,5 @@ VMETHOD_FUNC_CMT_TEMPLATE = '''\
 # Symbol Source: {symbol_source}
 ############################################################################################################
 '''
+
+VFPTHUNK_SUFFIX = '_vfpthunk_'

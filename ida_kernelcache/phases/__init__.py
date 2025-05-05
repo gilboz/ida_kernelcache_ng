@@ -6,4 +6,13 @@ from .collect_vtables import CollectVtables
 from .apply_rtti_info import ApplyRTTIInfoPhase
 from .create_types import CreateTypes
 from .colorize_vtables import ColorizeVtables
-ALL_PHASES = [CollectClasses, CollectVtables, CreateTypes, ApplyRTTIInfoPhase, ColorizeVtables]
+from .ipsw_symbolicate import IPSWSymbolicate
+from .pac_symbolicate import PacSymbolicate
+
+ALL_PHASES = [CollectClasses,
+              CollectVtables,
+              PacSymbolicate,
+              IPSWSymbolicate,
+              CreateTypes,
+              ApplyRTTIInfoPhase,
+              ColorizeVtables]
