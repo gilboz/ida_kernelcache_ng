@@ -11,6 +11,8 @@ You have three options:
 2. If you wish write scripts you may install it as a pip package 
 3. If you want to contribute see CONTRIBUTING.md
 
+For now it is better that you install it as a pip package and then run `cli.py`
+
 ## Credits
 * This repository is based upon the original toolkit created by Brandon Azad, [repo](https://github.com/bazad/ida_kernelcache).
   * The original tool was written for iOS versions 10,11,12 (we are currently at 18.0). While most of the libkern++ runtime hasn't changed there have been some major changes.
