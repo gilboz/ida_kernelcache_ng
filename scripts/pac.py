@@ -21,14 +21,31 @@ class HashState:
     def __repr__(self):
         return f'{self.v0:#x} {self.v1:#x} {self.v2:#x} {self.v3:#x}'
 
+def init_hash_state() -> HashState:
+
+    """
+    The key is taken from LLVM sources (lib/Support/SipHash.cpp)
+    Other than that the initialization of the hash is the same as in the original whitepaper by Jean-Philippe Aumasson
+    and Daniel J. Bernstein
+
+    Thanks @doadam
+    """
+    word = b'somepseudorandomlygeneratedbytes'
+    v0, v1, v2 ,v3 = (int.from_bytes(word[i:i+8], byteorder='big') for i in range(0, len(word), 8))
+    key = [0xb5, 0xd4, 0xc9, 0xeb, 0x79, 0x10, 0x4a, 0x79, 0x6f, 0xec, 0x8b, 0x1b, 0x42, 0x87, 0x81, 0xd4]
+    k0 = int.from_bytes(key[:8], byteorder='little')
+    k1 = int.from_bytes(key[8:16], byteorder='little')
+
+    v0 ^= k0
+    v1 ^= k1
+    v2 ^= k0
+    v3 ^= k1
+    return HashState(v0, v1, v2, v3)
 
 def siphash(data):
     """Python implementation of the siphash function."""
 
-    # These magic values were taken from: https://github.com/Siguza/iometa/blob/master/src/cxx.c#L37
-    # These are probably Apple specific - where did Siguza get them from?
-    #
-    state = HashState(v0=0x0a257d1c9bbab1c0, v1=0xb0eef52375ef8302, v2=0x1533771c85aca6d4, v3=0xa0e4e32062ff891c)
+    state = init_hash_state()
 
     def SIPROUND(iterations=1):
         for _ in range(iterations):
