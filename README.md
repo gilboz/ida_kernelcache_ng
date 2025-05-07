@@ -12,6 +12,25 @@ You have three options:
 3. If you want to contribute see CONTRIBUTING.md
 
 For now it is better that you install it as a pip package and then run `cli.py`
+```
+usage: cli.py [-h] (--idb IDB | --kc KC) [--no-auto-analysis] [--enable-console-messages]
+
+choose one of --idb or --kc
+
+options:
+  -h, --help            show this help message and exit
+  --idb IDB             Path to IDB (*.i64)
+  --kc KC               Path to KernelCache
+
+Optional arguments:
+  --no-auto-analysis    For IDB (.i64) input files, do not auto-analyze
+  --enable-console-messages
+                        Enable IDA console messages (not really recommended)
+```
+Example:
+```bash
+python3 cli.py --idb /tmp/kernelcache.release.iPhone16.i64
+```
 
 ## Credits
 * This repository is based upon the original toolkit created by Brandon Azad, [repo](https://github.com/bazad/ida_kernelcache).
