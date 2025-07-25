@@ -81,6 +81,9 @@ class PacSymbolicate(BasePhase):
                                    f'pv:{int(vtable_entry.pure_virtual)} '
                                    f'a:{int(vtable_entry.added)}')
 
+            if class_info.superclass is not None and class_info.superclass.vtable_info is None:
+                self.log.warning(f"{class_info.class_name}: Superclass vtable info is None, Could not handle overrides.")
+
         num_not_symbolicated = len(self._kc.vmethod_info_map) - self._kc.vmethod_info_map.num_symbolicated
 
         self.log.info(f'{self.num_total_vtable_entries} total vtable entries (multiple may point to the same vmethod)')
@@ -111,29 +114,27 @@ class PacSymbolicate(BasePhase):
         If the vtable entry was added in this current class we search the symbols db. Unfortunately, in case we don't find a match, we don't have information about this vmethod
         So we use some generic class_name::vmethod_{i} template. We may use the "guess type" functionality of IDA but it is far from accurate.
 
-        Searching the descendants adds ~100 symbols
         """
 
-        for class_info in origin_class_info.descendants(inclusive=True):
-            mangled_symbol = self._lookup_db(class_info.class_name, vtable_entry.pac_diversifier)
-            if mangled_symbol:
-                self.num_added += 1
-
-                # In case we were able to resolve through superclass pac dict then
-                # must adjust the classname of the symbol to fit the current class
-                if class_info != origin_class_info:
-                    return symbols.sub_classname(mangled_symbol, origin_class_info.class_name)
-                return mangled_symbol
+        mangled_symbol = self._lookup_db(origin_class_info.class_name, vtable_entry.pac_diversifier)
+        if mangled_symbol:
+            self.num_added += 1
+            return mangled_symbol
+        return None
 
     def _handle_overrides(self, origin_class_info: 'ClassInfo', vtable_entry: 'VtableEntry') -> str | None:
         # Search the entire inheritance branch
-        for class_info in itertools.chain(origin_class_info.ancestors(True), origin_class_info.descendants(inclusive=False)):
-            mangled_symbol = self._lookup_db(class_info.class_name, vtable_entry.pac_diversifier)
-            if mangled_symbol:
-                self.num_overrides += 1
+        parent_class_info = origin_class_info.superclass
+        if parent_class_info is None:
+            raise PhaseException(f'Unexpected Overrides for {origin_class_info.class_name} on {vtable_entry} - no parent class info!')
+        elif parent_class_info.vtable_info is None:
+            # This case is logged once in the parent method
+            self.num_invalid += 1
+            return None
 
-                # In case we were able to resolve through superclass pac dict then
-                # must adjust the classname of the symbol to fit the current class
-                if class_info != origin_class_info:
-                    return symbols.sub_classname(mangled_symbol, origin_class_info.class_name)
-                return mangled_symbol
+        parent_vtable_item = parent_class_info.vtable_info.entries[vtable_entry.index]
+        if parent_vtable_item.has_symbol:
+            mangled_symbol = parent_vtable_item.vmethod_info.mangled_symbol
+            self.num_overrides += 1
+            return symbols.sub_classname(mangled_symbol, origin_class_info.class_name)
+        return None
