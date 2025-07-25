@@ -157,7 +157,7 @@ class CollectClasses(BasePhase):
             # choose to skip them.
             for xref_ea in idautils.CodeRefsTo(self.osmetaclass_constructor_ea, flow=False):
                 self._num_xrefs += 1
-                func_start_ea = functions.get_func_start(xref_ea)
+                func_start_ea = functions.get_func_start_or_try_create(xref_ea)
                 self._visited.add(func_start_ea)
                 if self._handle_callsite(xref_ea):
                     self._num_succeeded += 1

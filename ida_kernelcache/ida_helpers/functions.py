@@ -6,6 +6,7 @@ import idc
 import ida_funcs
 import logging
 from ida_kernelcache.exceptions import PhaseException
+from ida_kernelcache.ida_helpers.instructions import get_previous
 
 log = logging.getLogger(__name__)
 
@@ -18,6 +19,26 @@ def get_func_start(ea: int, raise_error: bool = True) -> int:
             return idc.BADADDR
 
     return f.start_ea
+
+
+MAX_PREVIOUS_INSTRUCTIONS = 20
+
+
+def get_func_start_or_try_create(ea: int) -> int:
+    func_start = get_func_start(ea, raise_error=False)
+    if func_start != idc.BADADDR:
+        return func_start
+
+    prev = get_previous(ea, "PAC", MAX_PREVIOUS_INSTRUCTIONS)
+    if prev is None:
+        raise PhaseException(
+            f"Failed to find function start address of {ea:#x}, no PAC instruction before it."
+        )
+
+    if ida_funcs.add_func(prev) == 0:
+        raise PhaseException(f"Failed to create function for address of {ea:#x}")
+
+    return get_func_start(ea)
 
 
 # TODO: Rework function creates and make them an initial stage
