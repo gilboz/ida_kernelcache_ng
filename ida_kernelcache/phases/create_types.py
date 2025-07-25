@@ -100,13 +100,18 @@ class CreateTypes(BasePhase):
                     # Might raise StringExtractionError or DemanglingError
                     func_name = symbols.extract_method_name(vtable_entry.vmethod_info.mangled_symbol)
 
-                # TODO: IDA has a bug that does will fail to parse vtable declaration if two vmethods have the same name,
-                #  even if they have a different signature.
+                # IDA has a bug that does will fail to parse vtable declaration if two vmethods have the same name,
+                # even if they have a different signature. We will add a suffix to the function name in this case.
                 if func_name in func_names:
                     func_name_conflicts += 1
 
-                    # TODO: maybe just add a running suffix
-                    func_name = consts.VMETHOD_NAME_TEMPLATE.format(index=vtable_entry.index)
+                    for i in range(20):
+                        new_func_name = f'{func_name}{i}'
+                        if new_func_name not in func_names:
+                            func_name = new_func_name
+                            break
+                    else:
+                        func_name = consts.VMETHOD_NAME_TEMPLATE.format(index=vtable_entry.index)
 
                 func_names.add(func_name)
 

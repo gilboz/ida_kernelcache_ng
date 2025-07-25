@@ -209,9 +209,12 @@ class VtableEntry:
     def __eq__(self, other):
         return self.entry_ea == other.entry_ea
 
+    @property
+    def has_symbol(self) -> bool:
+        return bool(self.vmethod_info and self.vmethod_info.mangled_symbol)
+
     def __repr__(self) -> str:
-        has_symbol = int(bool(self.vmethod_info and self.vmethod_info.mangled_symbol))
-        return f'VtableEntry(index={self.index}, entry_ea={self.entry_ea:#x}, pac_diversifier={self.pac_diversifier:#x}, o={int(self.overrides)}, i={int(self.inherited)}, pv={int(self.pure_virtual)}, a={int(self.added)}, symbolicated={has_symbol})'
+        return f'VtableEntry(index={self.index}, entry_ea={self.entry_ea:#x}, pac_diversifier={self.pac_diversifier:#x}, o={int(self.overrides)}, i={int(self.inherited)}, pv={int(self.pure_virtual)}, a={int(self.added)}, symbolicated={int(self.has_symbol)})'
 
 
 class VtableInfo:

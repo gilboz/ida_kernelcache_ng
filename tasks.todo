@@ -21,6 +21,7 @@ Symbolication:
   ✔ Implement getting the PAC diversifier of every vtable entry @done(25-01-27 11:47)
   ✔ Fix errors "does not seem to be a signed PAC pointer". UPDATE: seems like some objects are subject to multiple inheritance? In the past this was not supported by libkern++ @done(25-01-27 11:47)
         according to Apple's documentation. There are these sentinels and non virtual thunks, weird. On a recent kernelcache there are 93 classes that contain a sentinel.
+  ☐ Create PAC Signatures for pure virtual methods, including OSMetaClassBase methods that OSObject implements.
 
 Get rid of old code!:
   ✔ Delete old and unused scripts! @done(25-01-27 11:47)
